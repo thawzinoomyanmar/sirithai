@@ -1,0 +1,31 @@
+{
+  "navbar": {
+    "basic_course": "Basic Course",
+    "advanced_course": "Advanced Course",
+    "alphabet_guide": "Alphabet Guide",
+    "grammar_manual": "Grammar Manual",
+    "vocab_book": "Vocab Book",
+    "course_store": "Course Store"
+  },
+  "course_common": {
+    "buy_now": "Buy Now",
+    "enroll_now": "Enroll Now",
+    "study_lesson": "STUDY LESSON",
+    "lesson_label": "LESSON",
+    "locked": "Locked",
+    "unlocked": "Unlocked",
+    "score": "SCORE"
+  },
+  "lock_screen": {
+    "title": "Advanced Course Locked",
+    "subtitle": "Purchase the Advanced Course to unlock Lessons 33 through 43 with full interactive study materials.",
+    "buy_button": "🛒 Buy Advanced Course (135,000 MMK)"
+  },
+  "checkout": {
+    "title": "Enrollment Portal",
+    "pending_approval": "Registration Pending Approval",
+    "admin_24h_notice": "Admin will respond and approve within 24 hours",
+    "submit_order": "Submit Order",
+    "thank_you": "Thank You for Your Order!"
+  }
+}

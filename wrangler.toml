@@ -1,0 +1,7 @@
+name = "sirithai"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sirithai-db"
+database_id = "ceba9320-4b75-46b5-8077-d96c4c627176"

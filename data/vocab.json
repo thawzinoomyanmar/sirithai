@@ -1,0 +1,992 @@
+[
+  {
+    "thai_text": "หนึ่ง",
+    "english_text": "One",
+    "myanmar_text": "၁ (တစ်)",
+    "phonetic": "nueng",
+    "phonetic_mm": "နိူင်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สอง",
+    "english_text": "Two",
+    "myanmar_text": "၂ (နှစ်)",
+    "phonetic": "song",
+    "phonetic_mm": "ဆောန်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สาม",
+    "english_text": "Three",
+    "myanmar_text": "၃ (သုံး)",
+    "phonetic": "sam",
+    "phonetic_mm": "သာမ်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สี่",
+    "english_text": "Four",
+    "myanmar_text": "၄ (လေး)",
+    "phonetic": "si",
+    "phonetic_mm": "စီ",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ห้า",
+    "english_text": "Five",
+    "myanmar_text": "၅ (ငါး)",
+    "phonetic": "ha",
+    "phonetic_mm": "ဟာ",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "หก",
+    "english_text": "Six",
+    "myanmar_text": "၆ (ခြောက်)",
+    "phonetic": "hok",
+    "phonetic_mm": "ဟို့ခ်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เจ็ด",
+    "english_text": "Seven",
+    "myanmar_text": "၇ (ခုနစ်)",
+    "phonetic": "chet",
+    "phonetic_mm": "ကျစ်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "แปด",
+    "english_text": "Eight",
+    "myanmar_text": "၈ (ရှစ်)",
+    "phonetic": "paet",
+    "phonetic_mm": "ปက်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เก้า",
+    "english_text": "Nine",
+    "myanmar_text": "၉ (ကိုး)",
+    "phonetic": "kao",
+    "phonetic_mm": "ကောက်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สิบ",
+    "english_text": "Ten",
+    "myanmar_text": "၁၀ (ဆယ်)",
+    "phonetic": "sip",
+    "phonetic_mm": "ဆိပ်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ร้อย",
+    "english_text": "Hundred",
+    "myanmar_text": "ရာ",
+    "phonetic": "roi",
+    "phonetic_mm": "ลวိုင်း",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "พัน",
+    "english_text": "Thousand",
+    "myanmar_text": "ထောင်",
+    "phonetic": "phan",
+    "phonetic_mm": "ဖัน",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "หมื่น",
+    "english_text": "Ten Thousand",
+    "myanmar_text": "သောင်း",
+    "phonetic": "muen",
+    "phonetic_mm": "မွန်း",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "แสน",
+    "english_text": "Hundred Thousand",
+    "myanmar_text": "သိန်း",
+    "phonetic": "saen",
+    "phonetic_mm": "ဆန်",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ล้าน",
+    "english_text": "Million",
+    "myanmar_text": "သန်း",
+    "phonetic": "lan",
+    "phonetic_mm": "ลန်း",
+    "category": "Numbers",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "กิน",
+    "english_text": "To eat",
+    "myanmar_text": "စားသည်",
+    "phonetic": "kin",
+    "phonetic_mm": "ကိန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เดิน",
+    "english_text": "To walk",
+    "myanmar_text": "လမ်းလျှောက်သည်",
+    "phonetic": "doen",
+    "phonetic_mm": "ဒေါန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "พูด",
+    "english_text": "To speak/talk",
+    "myanmar_text": "ပြောသည်",
+    "phonetic": "phut",
+    "phonetic_mm": "ဖူးတ်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เขียน",
+    "english_text": "To write",
+    "myanmar_text": "စာရေးသည်",
+    "phonetic": "khian",
+    "phonetic_mm": "ခียန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เรียน",
+    "english_text": "To learn/study",
+    "myanmar_text": "သင်ယူသည်",
+    "phonetic": "rian",
+    "phonetic_mm": "လီယန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ไป",
+    "english_text": "To go",
+    "myanmar_text": "သွားသည်",
+    "phonetic": "pai",
+    "phonetic_mm": "ပိုင်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "มา",
+    "english_text": "To come",
+    "myanmar_text": "လာသည်",
+    "phonetic": "ma",
+    "phonetic_mm": "မာ",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "นอน",
+    "english_text": "To sleep",
+    "myanmar_text": "အိပ်စက်သည်",
+    "phonetic": "non",
+    "phonetic_mm": "နောန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "อ่าน",
+    "english_text": "To read",
+    "myanmar_text": "စာဖတ်သည်",
+    "phonetic": "an",
+    "phonetic_mm": "อန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ทำงาน",
+    "english_text": "To work",
+    "myanmar_text": "အလုပ်လုပ်သည်",
+    "phonetic": "tham ngan",
+    "phonetic_mm": "ထန်ငန်",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ดู",
+    "english_text": "To watch/look",
+    "myanmar_text": "ကြည့်ရှုသည်",
+    "phonetic": "du",
+    "phonetic_mm": "ဒူ",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ฟัง",
+    "english_text": "To listen",
+    "myanmar_text": "နားထောင်သည်",
+    "phonetic": "fang",
+    "phonetic_mm": "ဖန်း",
+    "category": "Common Verbs",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "น้ำ",
+    "english_text": "Water",
+    "myanmar_text": "ရေ",
+    "phonetic": "nam",
+    "phonetic_mm": "နမ်း",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ข้าว",
+    "english_text": "Rice",
+    "myanmar_text": "ထမင်း",
+    "phonetic": "khao",
+    "phonetic_mm": "ခေါက်",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ไก่",
+    "english_text": "Chicken",
+    "myanmar_text": "ကြက်သား",
+    "phonetic": "kai",
+    "phonetic_mm": "ကိုင်",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "หมู",
+    "english_text": "Pork",
+    "myanmar_text": "ဝက်သား",
+    "phonetic": "mu",
+    "phonetic_mm": "မူ",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ไข่",
+    "english_text": "Egg",
+    "myanmar_text": "ကြက်ဥ",
+    "phonetic": "khai",
+    "phonetic_mm": "ခိုင်",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "นม",
+    "english_text": "Milk",
+    "myanmar_text": "နို့",
+    "phonetic": "nom",
+    "phonetic_mm": "နုမ်",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "กาแฟ",
+    "english_text": "Coffee",
+    "myanmar_text": "ကော်ဖี",
+    "phonetic": "kafae",
+    "phonetic_mm": "ကာဖဲ",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ชา",
+    "english_text": "Tea",
+    "myanmar_text": "လက်ဖက်ရည်",
+    "phonetic": "cha",
+    "phonetic_mm": "ချา",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ผลไม้",
+    "english_text": "Fruit",
+    "myanmar_text": "သစ်သီး",
+    "phonetic": "phonlamai",
+    "phonetic_mm": "ဖုန်ลမိုင်",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ผัก",
+    "english_text": "Vegetable",
+    "myanmar_text": "ဟင်းသီးဟင်းရွက်",
+    "phonetic": "phak",
+    "phonetic_mm": "ဖา့ခ်",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เนื้อวัว",
+    "english_text": "Beef",
+    "myanmar_text": "အမဲသား",
+    "phonetic": "nua wua",
+    "phonetic_mm": "နွားဝူအา",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ปลา",
+    "english_text": "Fish",
+    "myanmar_text": "ငါး",
+    "phonetic": "pla",
+    "phonetic_mm": "ปลา",
+    "category": "Food & Drinks",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "พ่อ",
+    "english_text": "Father",
+    "myanmar_text": "အဖေ",
+    "phonetic": "pho",
+    "phonetic_mm": "ဖော",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "แม่",
+    "english_text": "Mother",
+    "myanmar_text": "အမေ",
+    "phonetic": "mae",
+    "phonetic_mm": "မဲ",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "พี่ชาย",
+    "english_text": "Elder brother",
+    "myanmar_text": "အစ်ကို",
+    "phonetic": "phi chai",
+    "phonetic_mm": "ဖีချိုင်း",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "พี่สาว",
+    "english_text": "Elder sister",
+    "myanmar_text": "အစ်မ",
+    "phonetic": "phi sao",
+    "phonetic_mm": "ဖีဆောက်",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "น้องชาย",
+    "english_text": "Younger brother",
+    "myanmar_text": "မောင်/ညီ",
+    "phonetic": "nong chai",
+    "phonetic_mm": "နောန်းချိုင်း",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "น้องสาว",
+    "english_text": "Younger sister",
+    "myanmar_text": "ညီမ",
+    "phonetic": "nong sao",
+    "phonetic_mm": "နောန်းဆောက်",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เพื่อน",
+    "english_text": "Friend",
+    "myanmar_text": "သူငယ်ချင်း",
+    "phonetic": "phuan",
+    "phonetic_mm": "ဖူယန်",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ครู",
+    "english_text": "Teacher",
+    "myanmar_text": "ဆရာ/မ",
+    "phonetic": "khru",
+    "phonetic_mm": "ခရူ",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "นักเรียน",
+    "english_text": "Student",
+    "myanmar_text": "ကျောင်းသား",
+    "phonetic": "nak rian",
+    "phonetic_mm": "နက်လီယန်",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "คน",
+    "english_text": "Person",
+    "myanmar_text": "လူ",
+    "phonetic": "khon",
+    "phonetic_mm": "ခုမ်",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เด็ก",
+    "english_text": "Child",
+    "myanmar_text": "ကလေး",
+    "phonetic": "dek",
+    "phonetic_mm": "ดက်ခ์",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ผู้ใหญ่",
+    "english_text": "Adult",
+    "myanmar_text": "လူကြီး",
+    "phonetic": "phu yai",
+    "phonetic_mm": "ဖู้ယိုင်",
+    "category": "People & Family",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "โทรศัพท์",
+    "english_text": "Phone",
+    "myanmar_text": "ဖုန်း",
+    "phonetic": "thorasap",
+    "phonetic_mm": "ထိုရစပ်",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "หนังสือ",
+    "english_text": "Book",
+    "myanmar_text": "စာအုပ်",
+    "phonetic": "nangsu",
+    "phonetic_mm": "နန်းစူ",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ปากกา",
+    "english_text": "Pen",
+    "myanmar_text": "ဘောပင်",
+    "phonetic": "pakka",
+    "phonetic_mm": "ปัตကာ",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "กระเป๋า",
+    "english_text": "Bag",
+    "myanmar_text": "အိတ်",
+    "phonetic": "krapao",
+    "phonetic_mm": "ကရပိုင်",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "กุญแจ",
+    "english_text": "Key",
+    "myanmar_text": "သော့",
+    "phonetic": "kunchae",
+    "phonetic_mm": "ကွန်ချဲ",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "บ้าน",
+    "english_text": "House",
+    "myanmar_text": "အိမ်",
+    "phonetic": "ban",
+    "phonetic_mm": "ဘန်း",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เสื้อผ้า",
+    "english_text": "Clothes",
+    "myanmar_text": "အဝတ်အစား",
+    "phonetic": "suaphia",
+    "phonetic_mm": "စူးဝါးဖား",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "นาฬิกา",
+    "english_text": "Clock/Watch",
+    "myanmar_text": "နာရီ",
+    "phonetic": "nalika",
+    "phonetic_mm": "นาลีကာ",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "คอมพิวเตอร์",
+    "english_text": "Computer",
+    "myanmar_text": "ကွန်ပျူတာ",
+    "phonetic": "khomphiutoe",
+    "phonetic_mm": "ကွန်ပျူတာ",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "รถจักรยานต",
+    "english_text": "Bicycle",
+    "myanmar_text": "စက်ဘီး",
+    "phonetic": "rot chak",
+    "phonetic_mm": "ရို့ကျတ်",
+    "category": "Everyday Things",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "โรงเรียน",
+    "english_text": "School",
+    "myanmar_text": "ကျောင်း",
+    "phonetic": "rong rian",
+    "phonetic_mm": "ရုန်းလီယန်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "โรงพยาบาล",
+    "english_text": "Hospital",
+    "myanmar_text": "ဆေးရုံ",
+    "phonetic": "rong phayaban",
+    "phonetic_mm": "ရုန်းဖယာဘန်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ตลาด",
+    "english_text": "Market",
+    "myanmar_text": "ဈေး",
+    "phonetic": "talat",
+    "phonetic_mm": "တာလတ်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ร้านค้า",
+    "english_text": "Store/Shop",
+    "myanmar_text": "ဆိုင်",
+    "phonetic": "ran kha",
+    "phonetic_mm": "ลန်းခါး",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ร้านอาหาร",
+    "english_text": "Restaurant",
+    "myanmar_text": "စားသောက်ဆိုင်",
+    "phonetic": "ran ahan",
+    "phonetic_mm": "ลန်းအาဟန်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "โรงแรม",
+    "english_text": "Hotel",
+    "myanmar_text": "ဟိုတယ်",
+    "phonetic": "rong raem",
+    "phonetic_mm": "ရုန်းလန်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สนามบิน",
+    "english_text": "Airport",
+    "myanmar_text": "လေဆိပ်",
+    "phonetic": "sanam bin",
+    "phonetic_mm": "စနမ်ဘိန်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สถานี",
+    "english_text": "Station",
+    "myanmar_text": "ဘူတာရုံ",
+    "phonetic": "sathani",
+    "phonetic_mm": "စထာနี",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "สวนสาธารณะ",
+    "english_text": "Park",
+    "myanmar_text": "ပန်းခြံ",
+    "phonetic": "suan satharana",
+    "phonetic_mm": "သွန်စာသာရဏ",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "วัด",
+    "english_text": "Temple",
+    "myanmar_text": "ဘုရားကျောင်း / ဝတ်ကျောင်း",
+    "phonetic": "wat",
+    "phonetic_mm": "ဝပ်",
+    "category": "Places",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "วันนี้",
+    "english_text": "Today",
+    "myanmar_text": "ယနေ့",
+    "phonetic": "wan ni",
+    "phonetic_mm": "ဝမ်နီ",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "พรุ่งนี้",
+    "english_text": "Tomorrow",
+    "myanmar_text": "မနက်ဖြန်",
+    "phonetic": "phrung ni",
+    "phonetic_mm": "ဖလုန်းနီ",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เมื่อวาน",
+    "english_text": "Yesterday",
+    "myanmar_text": "မနေ့က",
+    "phonetic": "mua wan",
+    "phonetic_mm": "မူးဝါးဝမ်",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "วัน",
+    "english_text": "Day",
+    "myanmar_text": "နေ့",
+    "phonetic": "wan",
+    "phonetic_mm": "ဝမ်",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เดือน",
+    "english_text": "Month",
+    "myanmar_text": "လ",
+    "phonetic": "duan",
+    "phonetic_mm": "ဒူယန်",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ปี",
+    "english_text": "Year",
+    "myanmar_text": "နှစ်",
+    "phonetic": "pi",
+    "phonetic_mm": "ပี",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ตอนเช้า",
+    "english_text": "Morning",
+    "myanmar_text": "မနက်ပိုင်း",
+    "phonetic": "ton chao",
+    "phonetic_mm": "တွန်ချောက်",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "กลางคืน",
+    "english_text": "Night",
+    "myanmar_text": "ညပိုင်း",
+    "phonetic": "klang khuen",
+    "phonetic_mm": "ကလန်းခွန်း",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ชั่วโมง",
+    "english_text": "Hour",
+    "myanmar_text": "နာရီ (အချိန်အပိုင်းအခြား)",
+    "phonetic": "chuamong",
+    "phonetic_mm": "ချိုးမုန်း",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "นาที",
+    "english_text": "Minute",
+    "myanmar_text": "မိနစ်",
+    "phonetic": "nati",
+    "phonetic_mm": "นาที",
+    "category": "Time & Dates",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "รถยนต์",
+    "english_text": "Car",
+    "myanmar_text": "ကား",
+    "phonetic": "rot yon",
+    "phonetic_mm": "ရို့ယုန်",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "มอเตอร์ไซค์",
+    "english_text": "Motorcycle",
+    "myanmar_text": "ဆိုင်ကယ်",
+    "phonetic": "moto sai",
+    "phonetic_mm": "မော်တော်ဆိုင်",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "จักรยาน",
+    "english_text": "Bicycle",
+    "myanmar_text": "စက်ဘီး",
+    "phonetic": "chakkrayan",
+    "phonetic_mm": "ကျတ်ကရယန်",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "รถไฟ",
+    "english_text": "Train",
+    "myanmar_text": "ရထား",
+    "phonetic": "rot fai",
+    "phonetic_mm": "ရို့ဖိုင်",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เครื่องบิน",
+    "english_text": "Airplane",
+    "myanmar_text": "လေယာဉ်ပျံ",
+    "phonetic": "khruang bin",
+    "phonetic_mm": "ခလွန်းဘိန်",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เรือ",
+    "english_text": "Boat",
+    "myanmar_text": "သင်္ဘော",
+    "phonetic": "rua",
+    "phonetic_mm": "လူးဝါး",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "รถเมล์",
+    "english_text": "Bus",
+    "myanmar_text": "ဘတ်စ်ကား",
+    "phonetic": "rot me",
+    "phonetic_mm": "ရို့မေး",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ตั๋ว",
+    "english_text": "Ticket",
+    "myanmar_text": "လက်မှတ်",
+    "phonetic": "tua",
+    "phonetic_mm": "တူဝါး",
+    "category": "Transportation",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "เงิน",
+    "english_text": "Money",
+    "myanmar_text": "ပိုက်ဆံ",
+    "phonetic": "ngon",
+    "phonetic_mm": "ငုမ်",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ราคา",
+    "english_text": "Price",
+    "myanmar_text": "ဈေးနှုန်း",
+    "phonetic": "rakha",
+    "phonetic_mm": "ရာခါ",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ซื้อ",
+    "english_text": "To buy",
+    "myanmar_text": "ဝယ်သည်",
+    "phonetic": "su",
+    "phonetic_mm": "စူး",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ขาย",
+    "english_text": "To sell",
+    "myanmar_text": "ရောင်းသည်",
+    "phonetic": "khai",
+    "phonetic_mm": "ခိုင်း",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ถูก",
+    "english_text": "Cheap",
+    "myanmar_text": "ဈေးသက်သာသော",
+    "phonetic": "thuk",
+    "phonetic_mm": "ထူးခ်",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "แพง",
+    "english_text": "Expensive",
+    "myanmar_text": "ဈေးကြီးသော",
+    "phonetic": "phaeng",
+    "phonetic_mm": "ဖန်း",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ลดราคา",
+    "english_text": "Discount",
+    "myanmar_text": "လျှော့ဈေး",
+    "phonetic": "lot rakha",
+    "phonetic_mm": "ลုတ်ရာခါ",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ลูกค้า",
+    "english_text": "Customer",
+    "myanmar_text": "ဝယ်သူ",
+    "phonetic": "luk kha",
+    "phonetic_mm": "ลုခ်ခါး",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ของขวัญ",
+    "english_text": "Gift",
+    "myanmar_text": "လက်ဆောင်",
+    "phonetic": "khong khwan",
+    "phonetic_mm": "ခေါင်းခွမ်",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  },
+  {
+    "thai_text": "ใบเสร็จ",
+    "english_text": "Receipt",
+    "myanmar_text": "ပြေစာ / ဘောက်ချာ",
+    "phonetic": "baisret",
+    "phonetic_mm": "ဘိုင်ဆရက်",
+    "category": "Work & Shopping",
+    "audio_url": null,
+    "pdf_drive_url": null
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Remix: Remix: Thai-Myanmar Vocabulary \u0026 Grammar Builder ",
+  "description": "An interactive, offline Thai vocabulary and grammar tutor based on the FSI Thai Basic Course, featuring word-by-word sentence builders, pronunciation guides, and complete Myanmar language support.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
