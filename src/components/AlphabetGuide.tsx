@@ -50,7 +50,8 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
     const fetchAlphabet = async () => {
       try {
         const response = await fetch('/api/dynamic-data?key=alphabet');
-        if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
           if (data && data.consonants && data.vowels) {
             setConsonants(data.consonants);

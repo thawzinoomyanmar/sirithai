@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, Play, Search, Volume2, X, Sparkles, ChevronDown, List, HelpCircle, MessageSquare } from 'lucide-react';
-import { SAYAR_SON_JAI_BLUE_BOOK } from '../data/sayarSonJaiBlueBook';
-import { grammarChapters } from '../data/grammarChapters';
-import { thaiConsonants, thaiVowels } from '../data/alphabet';
+import { useDynamicData } from '../hooks/useApiData';
 
 interface TextbookReaderProps {
   bookId: string;
@@ -208,7 +206,7 @@ const PAGE_13_PART2_GRAMMAR_ITEMS = [
   { ID: 2, MODIFIER: "อาจจะ... (ก็)", THAI_CLEAN: "อาจจะทำก็", PHONETIC: "àat cà' tham kɔ̂ (အာတ်ကျသမ်ကော)", MYANMAR: "လုပ်ကောင်းလုပ်မည်", TITLE: "อาจจะทำ(ก็)" },
   { ID: 3, MODIFIER: "กำลังจะ... (อยู่)", THAI_CLEAN: "กำลังจะทำอยู่", PHONETIC: "kam-laŋ cà' tham jùu (ကမ်လန်းကျသမ်ယူ)", MYANMAR: "လုပ်တော့မည်", TITLE: "กำลังจะทำ(อยู่)" },
   { ID: 4, MODIFIER: "ควร จะ... (ก็)", THAI_CLEAN: "ควรจะทำก็", PHONETIC: "khuuan cà' tham kɔ̂ (ခူဝမ်ကျသမ်ကော)", MYANMAR: "လုပ်သင့်သည်", TITLE: "ควร จะทำ(ก็)" },
-  { ID: 5, MODIFIER: "ต้อง... (ก็)", THAI_CLEAN: "ต้องทำก็", PHONETIC: "dtɔ̂ŋ tham kɔ̂ (တောင်သမ်ကော)", MYANMAR: "လုပ်ရမည်", TITLE: "ต้อง ทำ(ก็)" },
+  { ID: 5, MODIFIER: "ต้อง... (ก็)", THAI_CLEAN: "ต้องทำก็", PHONETIC: "dtɔ̂ŋ tham kɔ̂ (တောင်သမ်ကော)", MYANMAR: "လုပ်ရမည်", TITLE: "ต้อง ทำ(も)" },
   { ID: 6, MODIFIER: "อยาก... (ก็)", THAI_CLEAN: "อยากทำก็", PHONETIC: "jàak tham kɔ̂ (ယာတ်သမ်ကော)", MYANMAR: "လုပ်ချင်သည်", TITLE: "อยาก ทำ(ก็)" },
   { ID: 7, MODIFIER: "อย่า...", THAI_CLEAN: "อย่าทำ", PHONETIC: "jàa tham (ယာသမ်)", MYANMAR: "မလုပ်နှင့်", TITLE: "อย่า ทำ" },
   { ID: 8, MODIFIER: "ไม่ ต้อง...", THAI_CLEAN: "ไม่ต้องทำ", PHONETIC: "mâj dtɔ̂ŋ (မိုင်တောင်)", MYANMAR: "မလုပ်ရ", TITLE: "ไม่ ต้อง" },
@@ -375,8 +373,8 @@ const PREMIUM_BOOK_QA: QAItem[] = [
   },
   {
     id: 6,
-    q: { thai: "ขอความช่วยเหลือหน่อยได้ไหม", phonetic: "ခေါခွမ်းချွေးลွန်းနွိုင်ဒိုင်မိုင်", myanmar: "ကူညီပေးလို့ရမလား။" },
-    a: { thai: "ยินดีช่วยเหลือครับ", phonetic: "ယိန်ဒီချွေးလွန်းခရတ်", myanmar: "ဝမ်းမြောက်วမ်းသာ ကူညီပေးပါ့မယ်ခင်ဗျာ။" }
+    q: { thai: "ขอความช่วยเหลือหน่อยได้ไหม", phonetic: "ခေါခွမ်းချွေးlွန်းနွိုင်ဒိုင်မိုင်", myanmar: "ကူညီပေးလို့ရမလား။" },
+    a: { thai: "ยินดีช่วยเหลือครับ", phonetic: "ယိန်ဒီချွေးlွန်းခရတ်", myanmar: "ဝမ်းမြောက်ဝမ်းသာ ကူညီပေးပါ့မယ်ခင်ဗျာ။" }
   }
 ];
 
@@ -436,19 +434,19 @@ const PREMIUM_BOOK_CONVERSATION: ConversationItem[] = [
   {
     id: 1,
     thai: "วันนี้เราจะไปทานข้าวเย็นด้วยกันไหม",
-    phonetic: "ဝမ်းနီရောက်ဂျาပိုင်ထန်ခေါဝ်ยဲန်ဒွေးကန်မိုင်",
+    phonetic: "ဝမ်းနီရောက်ဂျာပိုင်ထန်ခေါဝ်yဲန်ဒွေးကန်မိုင်",
     myanmar: "ဒီနေ့ ငါတို့တွေ ညစာ အတူတူသွားစားကြမလား။"
   },
   {
     id: 2,
     thai: "ดีเลยค่ะ อยากทานอาหารทะเลอยู่พอดี",
-    phonetic: "ดีလေယောခါး ရတ်ထန်အာဟันထာလေယူဖောဒီ",
-    myanmar: "ကောင်းတာပေါ့ရှင်၊ ပินလယ်စာ စားချင်နေတာနဲ့ အတော်ပဲ။"
+    phonetic: "ดีလေယောခါး ရတ်ထန်အာဟန်ထာလေယူဖောဒီ",
+    myanmar: "ကောင်းတာပေါ့ရှင်၊ ပင်လယ်စာ စားချင်နေတာနဲ့ အတော်ပဲ။"
   },
   {
     id: 3,
     thai: "ร้านอาหารทะเลแถวนี้มีร้านอร่อยแนะนำไหม",
-    phonetic: "ရန်အာဟันထာလေထောင်နီမီရန်အရွိုင်နဲနမ်မိုင်",
+    phonetic: "ရန်အာဟန်ထာလေထောင်နီမီရန်အရွိုင်နဲနမ်မိုင်",
     myanmar: "ဒီအနားမှာ အရသာရှိပြီး အကြံပြုချင်တဲ့ ပင်လယ်စာဆိုင် ရှိလား။"
   },
   {
@@ -466,7 +464,7 @@ const PREMIUM_BOOK_CONVERSATION: ConversationItem[] = [
   {
     id: 6,
     thai: "ตกลงครับ เดี๋ยวผมจะโทรไปจองโต๊ะไว้ก่อน",
-    phonetic: "တုတ်လုန်ခရတ် ဒျောင်ဖွန်ဂျาထိုပိုင်ဂျောင်တုတ်ဝိုင်ကွန်",
+    phonetic: "တုတ်လုန်ခရတ် ဒျောင်ဖွန်ဂျာထိုပိုင်ဂျောင်တုတ်ဝိုင်ကွန်",
     myanmar: "ကောင်းပါပြီခင်ဗျာ၊ ကျွန်တော် စားပွဲကြိုတင်ပြီး ဖုန်းဆက်မှာထားလိုက်ပါ့မယ်။"
   },
   {
@@ -487,34 +485,34 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
   const [sentencePage, setSentencePage] = useState<number>(1);
   const [activePage2Idx, setActivePage2Idx] = useState<number | null>(null);
 
-  // Dynamic D1 datasets with static fallbacks
-  const [blueBook, setBlueBook] = useState<any[]>(SAYAR_SON_JAI_BLUE_BOOK);
-  const [gChapters, setGChapters] = useState<any[]>(grammarChapters);
-  const [consonants, setConsonants] = useState<any[]>(thaiConsonants);
-  const [vowels, setVowels] = useState<any[]>(thaiVowels);
+  const { dynamicData, isLoading } = useDynamicData();
+
+  const apiBlueBook = React.useMemo(() => {
+    if (!dynamicData?.lessons) return [];
+    return dynamicData.lessons.map((l: any) => ({
+      id: l.id,
+      titleMm: l.titleMyanmar || l.titleThai,
+      titleEn: l.titleEnglish || l.titleThai,
+      phrases: (l.dialogue || []).map((d: any) => ({
+        myanmar: d.myanmar,
+        thai: d.thai,
+        phonetic: d.phonetic
+      }))
+    }));
+  }, [dynamicData?.lessons]);
+
+  const apiGrammarChapters = dynamicData?.grammar_chapters || [];
+  const apiConsonants = (dynamicData?.alphabet || []).filter((a: any) => a.type === 'consonant');
+  const apiVowels = (dynamicData?.alphabet || []).filter((a: any) => a.type === 'vowel');
+
+  const [activeLesson, setActiveLesson] = useState<number>(0);
+  const [blueBook, setBlueBook] = useState<any[]>(apiBlueBook);
 
   useEffect(() => {
-    const fetchDynamicReaderData = async () => {
-      try {
-        const response = await fetch('/api/dynamic-data');
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data) {
-            const { blue_book, grammar_chapters, alphabet } = result.data;
-            if (blue_book) setBlueBook(blue_book);
-            if (grammar_chapters) setGChapters(grammar_chapters);
-            if (alphabet && alphabet.consonants && alphabet.vowels) {
-              setConsonants(alphabet.consonants);
-              setVowels(alphabet.vowels);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed loading dynamic textbook reader data:", err);
-      }
-    };
-    fetchDynamicReaderData();
-  }, []);
+    if (apiBlueBook.length > 0) {
+      setBlueBook(apiBlueBook);
+    }
+  }, [apiBlueBook]);
 
   // Premium Custom States for sentence builder
   const [selectedPremiumSubject, setSelectedPremiumSubject] = useState(PREMIUM_SUBJECTS[0]);
@@ -822,11 +820,11 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
           title: "Advanced Thai-Myanmar Grammar Manual",
           myanmarTitle: "အဆင့်မြင့် ထိုင်း-မြန်မာ သဒ္ဒါလက်စွဲ စာအုပ်",
           thaiHeader: "ไวยากรณ์ไทย",
-          chapters: gChapters.map(chap => {
+          chapters: apiGrammarChapters.map((chap: any) => {
             const items: { idx: number; myanmar: string; thai: string; phonetic: string }[] = [];
             let count = 1;
-            chap.rules.forEach(rule => {
-              rule.examples.forEach(ex => {
+            chap.rules.forEach((rule: any) => {
+              rule.examples.forEach((ex: any) => {
                 items.push({
                   idx: count++,
                   myanmar: `${rule.titleMyanmar} • ${ex.myanmar}`,
@@ -863,9 +861,9 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
         };
 
       case 'free-writing': {
-        const midConsonants = thaiConsonants.filter(c => c.class === 'mid');
-        const highConsonants = thaiConsonants.filter(c => c.class === 'high');
-        const lowConsonants = thaiConsonants.filter(c => c.class === 'low');
+        const midConsonants = apiConsonants.filter((c: any) => c.class === 'mid');
+        const highConsonants = apiConsonants.filter((c: any) => c.class === 'high');
+        const lowConsonants = apiConsonants.filter((c: any) => c.class === 'low');
 
         return {
           title: "Thai Letters Writing Practice Sheet",
@@ -876,7 +874,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               id: 1,
               titleEn: "All Mid Class Consonants",
               titleMm: "ထိုင်းအလယ်ဗျည်း ၉ လုံးလေ့ကျင့်ခန်း",
-              items: midConsonants.map((c, idx) => ({
+              items: midConsonants.map((c: any, idx: number) => ({
                 idx: idx + 1,
                 myanmar: `${c.char} - ${c.nameEnglish} (${c.nameMyanmar}) - Class: Mid`,
                 thai: `${c.char} (${c.name})`,
@@ -887,7 +885,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               id: 2,
               titleEn: "All High Class Consonants",
               titleMm: "ထိုင်းအထက်ဗျည်း ၁၁ လုံးလေ့ကျင့်ခန်း",
-              items: highConsonants.map((c, idx) => ({
+              items: highConsonants.map((c: any, idx: number) => ({
                 idx: idx + 1,
                 myanmar: `${c.char} - ${c.nameEnglish} (${c.nameMyanmar}) - Class: High`,
                 thai: `${c.char} (${c.name})`,
@@ -898,7 +896,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               id: 3,
               titleEn: "All Low Class Consonants",
               titleMm: "ထိုင်းအောက်ဗျည်း ၂၄ လုံးလေ့ကျင့်ခန်း",
-              items: lowConsonants.map((c, idx) => ({
+              items: lowConsonants.map((c: any, idx: number) => ({
                 idx: idx + 1,
                 myanmar: `${c.char} - ${c.nameEnglish} (${c.nameMyanmar}) - Class: Low`,
                 thai: `${c.char} (${c.name})`,
@@ -909,7 +907,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               id: 4,
               titleEn: "Essential Thai Vowels (Vowel Symbols & Phonetics)",
               titleMm: "အခြေခံ ထိုင်းသရအက္ขရာများနှင့် အသံထွက်များ",
-              items: thaiVowels.map((v, idx) => ({
+              items: apiVowels.map((v: any, idx: number) => ({
                 idx: idx + 1,
                 myanmar: `ခေါ်သံ: ${v.myanmarSound} (${v.length === 'short' ? 'အသံတို' : 'အသံရှည်'}) - ဥပမာ: ${v.exampleMyanmar}`,
                 thai: `${v.char} (ဥပမာ: ${v.exampleThai})`,
@@ -1996,7 +1994,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
                   if (filteredConv.length === 0) {
                     return (
                       <div className="text-center py-12 text-xs font-bold text-slate-400">
-                        ကိုက်ညီသော စကားပြော မရှိပါ။
+                        koက်ညီသော စကားပြော မရှိပါ။
                       </div>
                     );
                   }
@@ -2082,7 +2080,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
                     <p className="text-[10px] text-slate-400 mt-0.5">Try changing the category or clearing the search query.</p>
                   </div>
                 ) : (
-                  filteredChapters.map((chap, idx) => {
+                  filteredChapters.map((chap) => {
                     const meta = getChapterMeta(chap.id, chap.titleEn);
                     return (
                       <div

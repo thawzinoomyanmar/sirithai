@@ -1,5 +1,4 @@
 import { localDB } from './db';
-import { VOCAB_DATA } from '../data/vocab';
 
 export interface SyncLog {
   timestamp: string;
@@ -60,10 +59,10 @@ export function addSyncLog(
 
 export async function registerNewUser(email: string, password: string, fullName: string): Promise<{ success: boolean; message?: string }> {
   addSyncLog('auth', `Initiating local registration for user: ${email}...`, 'info');
-  
+
   try {
     const dynamicId = 'user-' + Date.now();
-    
+
     // Cache to client browser local DB instantly
     await localDB.auth_cache.put({
       id: dynamicId,
@@ -87,25 +86,25 @@ export async function loginUser(email: string, password: string): Promise<{ succ
     if (email.trim().toLowerCase() === 'admin@sirithai.com' && password === 'admin123123') {
       localStorage.setItem('admin_session_active', 'true');
       addSyncLog('auth', `Admin session active locally via localStorage.`, 'success');
-      return { 
-        success: true, 
-        user: { 
-          id: 'admin-local-session', 
-          email: 'admin@sirithai.com', 
-          user_metadata: { full_name: 'Admin', role: 'admin' } 
-        } 
+      return {
+        success: true,
+        user: {
+          id: 'admin-local-session',
+          email: 'admin@sirithai.com',
+          user_metadata: { full_name: 'Admin', role: 'admin' }
+        }
       };
     }
 
     // Check IndexedDB auth_cache for matching email
     const cachedUsers = await localDB.auth_cache.toArray();
     const matchedUser = cachedUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
-    
+
     if (matchedUser) {
       addSyncLog('auth', `Local Auth cache hit for user: ${email}`, 'success');
       return { success: true, user: matchedUser };
     }
-    
+
     // Fallback: create dynamic offline session
     addSyncLog('auth', `User not found in local cache. Generating dynamic offline session for: ${email}`, 'info');
     const dynamicId = 'user-' + Date.now();
@@ -175,23 +174,23 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
     const localCount = await localDB.words_and_audio.count();
     if (localCount === 0 || force) {
       addSyncLog('sync', 'Querying Cloudflare D1 for words_phrases...', 'info');
-      
+
       try {
         const response = await fetch('/api/vocabulary');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const d1Res = await response.json();
 
-        if (d1Res.success && d1Res.results) {
-          const words = d1Res.results;
-          
+        if (d1Res.success && (d1Res.data || d1Res.results)) {
+          const words = d1Res.data || d1Res.results;
+
           // Use a Dexie transaction to ensure atomicity
           await localDB.transaction('rw', localDB.words_and_audio, async () => {
             for (const word of words) {
               const existing = await localDB.words_and_audio.get(word.id);
-              
+
               await localDB.words_and_audio.put({
                 id: word.id,
                 thai_text: word.thai_text || existing?.thai_text || '',
@@ -227,13 +226,14 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for courses...', 'info');
         const coursesRes = await fetch('/api/courses');
         if (coursesRes.ok) {
-          const coursesData = await coursesRes.json();
+          const coursesResData = await coursesRes.json();
+          const courses = coursesResData.data || coursesResData;
           await localDB.transaction('rw', localDB.courses, async () => {
             await localDB.courses.clear();
-            for (const course of coursesData) {
+            for (const course of courses) {
               await localDB.courses.put({
-                id: course.id,
-                name: course.name,
+                id: course.id || course.course_id || crypto.randomUUID(),
+                name: course.name || course.nameMm || '',
                 description: course.description || ''
               });
             }
@@ -248,17 +248,18 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for lessons...', 'info');
         const lessonsRes = await fetch('/api/lessons');
         if (lessonsRes.ok) {
-          const lessonsData = await lessonsRes.json();
+          const lessonsResData = await lessonsRes.json();
+          const lessons = lessonsResData.data || lessonsResData;
           await localDB.transaction('rw', localDB.lessons, async () => {
             await localDB.lessons.clear();
-            for (const lesson of lessonsData) {
+            for (const lesson of lessons) {
               await localDB.lessons.put({
-                id: lesson.id,
-                course_id: lesson.course_id,
-                title_thai: lesson.title_thai || '',
-                title_phonetic: lesson.title_phonetic || '',
-                title_english: lesson.title_english || '',
-                title_myanmar: lesson.title_myanmar || ''
+                id: lesson.id, // Can be undefined for ++id
+                course_id: lesson.courseId || lesson.course_id || 'course-basic',
+                title_thai: lesson.titleThai || lesson.title_thai || '',
+                title_phonetic: lesson.titlePhonetic || lesson.title_phonetic || '',
+                title_english: lesson.titleEnglish || lesson.title_english || '',
+                title_myanmar: lesson.titleMyanmar || lesson.title_myanmar || ''
               });
             }
           });
@@ -272,14 +273,15 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for grammar chapters...', 'info');
         const grammarRes = await fetch('/api/grammar-chapters');
         if (grammarRes.ok) {
-          const grammarData = await grammarRes.json();
+          const grammarResData = await grammarRes.json();
+          const chapters = grammarResData.data || grammarResData;
           await localDB.transaction('rw', localDB.grammar_chapters, async () => {
             await localDB.grammar_chapters.clear();
-            for (const chapter of grammarData) {
+            for (const chapter of chapters) {
               await localDB.grammar_chapters.put({
-                chapter_number: chapter.chapter_number,
-                title_english: chapter.title_english || '',
-                title_myanmar: chapter.title_myanmar || ''
+                chapter_number: chapter.chapterNumber || chapter.chapter_number || 0,
+                title_english: chapter.titleEnglish || chapter.title_english || '',
+                title_myanmar: chapter.titleMyanmar || chapter.title_myanmar || ''
               });
             }
           });
@@ -293,16 +295,17 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for alphabet...', 'info');
         const alphabetRes = await fetch('/api/alphabet');
         if (alphabetRes.ok) {
-          const alphabetData = await alphabetRes.json();
+          const alphabetResData = await alphabetRes.json();
+          const alphabets = alphabetResData.data || alphabetResData;
           await localDB.transaction('rw', localDB.alphabet, async () => {
             await localDB.alphabet.clear();
-            for (const alpha of alphabetData) {
+            for (const alpha of alphabets) {
               await localDB.alphabet.put({
                 id: alpha.id,
                 type: alpha.type || '',
                 character: alpha.character || '',
-                name_thai: alpha.name_thai || '',
-                name_phonetic: alpha.name_phonetic || ''
+                name_thai: alpha.nameThai || alpha.name_thai || '',
+                name_phonetic: alpha.namePhonetic || alpha.name_phonetic || ''
               });
             }
           });
@@ -312,7 +315,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
     } catch (err: any) {
       addSyncLog('sync', `D1 relational pull failed: ${err.message}`, 'error');
     }
-    
+
     window.dispatchEvent(new Event('sirithai_db_synced'));
     return { success: true, pulled: pulledCount, pushed: pushedCount };
   } catch (error: any) {

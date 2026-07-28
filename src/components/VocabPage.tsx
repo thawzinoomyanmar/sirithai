@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Volume2, Search, Book, Sparkles } from 'lucide-react';
-import { VOCAB_DATA, VocabCategory, VocabItem } from '../data/vocab';
+import { VocabCategory, VocabItem } from '../types';
+import { useDynamicData } from '../hooks/useApiData';
 import { localDB } from '../utils/db';
 
 interface VocabPageProps {
@@ -9,49 +10,41 @@ interface VocabPageProps {
 }
 
 export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
-  const [categories, setCategories] = useState<VocabCategory[]>(() => {
-    const saved = localStorage.getItem('thai_vocab_book_categories');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Error parsing saved vocab book categories in VocabPage:", e);
+  const { dynamicData, isLoading } = useDynamicData();
+  const apiCategories = dynamicData?.vocab_categories || [];
+
+  const [categories, setCategories] = useState<VocabCategory[]>([]);
+  const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
+
+  useEffect(() => {
+    if (apiCategories.length > 0) {
+      setCategories(apiCategories);
+      if (!selectedCategoryName) {
+        setSelectedCategoryName(apiCategories[0].name);
       }
     }
-    return VOCAB_DATA;
-  });
+  }, [apiCategories, selectedCategoryName]);
 
   useEffect(() => {
     const handleUpdate = () => {
       const saved = localStorage.getItem('thai_vocab_book_categories');
       if (saved) {
         try {
-          setCategories(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          setCategories(parsed);
+          if (parsed.length > 0 && !parsed.some((c: any) => c.name === selectedCategoryName)) {
+            setSelectedCategoryName(parsed[0].name);
+          }
         } catch (e) {
           console.error("Error parsing saved vocab book categories in VocabPage:", e);
         }
-      } else {
-        setCategories(VOCAB_DATA);
       }
     };
     window.addEventListener('thai_vocab_book_categories_updated', handleUpdate);
     return () => {
       window.removeEventListener('thai_vocab_book_categories_updated', handleUpdate);
     };
-  }, []);
-
-  const [selectedCategoryName, setSelectedCategoryName] = useState<string>(() => {
-    const saved = localStorage.getItem('thai_vocab_book_categories');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.length > 0) {
-          return parsed[0].name;
-        }
-      } catch (e) {}
-    }
-    return VOCAB_DATA[0].name;
-  });
+  }, [selectedCategoryName]);
   
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [playingWord, setPlayingWord] = useState<string | null>(null);
@@ -125,6 +118,30 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
       setTimeout(() => setPlayingWord(null), 800);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-3xl w-full min-h-[70vh] flex items-center justify-center border-2 border-slate-100">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-brand-purple/20 border-t-brand-purple rounded-full animate-spin"></div>
+          <p className="text-sm font-sans font-bold text-brand-muted">Loading Vocabulary...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (categories.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl w-full min-h-[70vh] flex items-center justify-center border-2 border-slate-100">
+        <div className="text-center p-6">
+          <div className="text-4xl mb-2">📭</div>
+          <h3 className="font-sans font-black text-brand-dark mb-2">No data available</h3>
+          <p className="text-xs text-brand-muted font-bold max-w-sm">Please ensure you are connected to the internet and the API is accessible.</p>
+          <button onClick={onClose} className="mt-4 px-6 py-2 bg-brand-purple text-white rounded-xl text-xs font-bold">Back</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div

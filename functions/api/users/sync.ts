@@ -48,7 +48,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       message: 'User profile synced to Cloudflare D1 successfully.',
       data: existingUser || { id: userId, full_name: name, email: mail, avatar_url: avatar, role: userRole }
     });
-  } catch (err: any) {
-    return jsonResponse({ success: false, error: err.message || err }, 500);
+  } catch (e: any) {
+    console.error("Backend Error:", e);
+    return Response.json({ success: false, error: e.message || String(e) }, { status: 500 });
   }
 };

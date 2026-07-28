@@ -171,4 +171,32 @@ export interface StoreItem {
   conversationEntries?: EBookConversationEntry[];
 }
 
+export interface VocabItem {
+  thai: string;
+  phonetic: string;
+  phoneticMm: string;
+  english: string;
+  myanmar: string;
+  illustration: string;
+}
 
+export interface VocabCategory {
+  name: string;
+  icon: string;
+  items: VocabItem[];
+}
+
+export interface GrammarChapter {
+  id: number;
+  chapterNumber?: number;
+  titleEnglish: string;
+  titleMyanmar: string;
+  content?: any;
+}
+
+export interface OrientationArticle {
+  id: string | number;
+  titleEnglish: string;
+  titleMyanmar?: string;
+  content: any;
+}

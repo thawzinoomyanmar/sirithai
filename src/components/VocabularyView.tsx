@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { WordBreakdown } from '../types';
 import { getMyanmarPhonetic } from '../utils/sentenceUtils';
-import { pdfVocabulary } from '../data/pdfVocabulary';
 import { Volume2, Volume1, Volume, HelpCircle, CheckCircle, Award, RefreshCw, Smile, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { localDB } from '../utils/db';
@@ -42,7 +41,14 @@ export default function VocabularyView({
     
     // Fallback
     const saved = localStorage.getItem(`thai_custom_vocab_${lessonId}`);
-    let loadedWords = pdfVocabulary[lessonId] || [];
+    let loadedWords: WordBreakdown[] = [];
+    const savedPdfVocab = localStorage.getItem('thai_pdf_vocabulary');
+    if (savedPdfVocab) {
+      try {
+        const parsed = JSON.parse(savedPdfVocab);
+        loadedWords = parsed[lessonId] || [];
+      } catch (e) {}
+    }
     if (saved) {
       try {
         loadedWords = JSON.parse(saved);
@@ -55,13 +61,16 @@ export default function VocabularyView({
 
   useEffect(() => {
     if (words.length > 0) {
-      if (!selectedWord || !words.some(w => w.thai === selectedWord.thai)) {
-        setSelectedWord(words[0]);
-      }
+      setSelectedWord(prev => {
+        if (!prev || !words.some(w => w.thai === prev.thai)) {
+          return words[0];
+        }
+        return prev;
+      });
     } else {
       setSelectedWord(null);
     }
-  }, [words, selectedWord]);
+  }, [words]);
 
   
   // Trainer state

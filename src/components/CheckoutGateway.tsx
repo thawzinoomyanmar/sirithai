@@ -1036,7 +1036,8 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                     };
                     setOrders(prev => [newOrder, ...prev]);
                     
-                    const realName = buyerUsername || 
+                    const realName = (window as any).Clerk?.user?.id || 
+                                     buyerUsername || 
                                      (window as any).Clerk?.user?.fullName || 
                                      (window as any).Clerk?.user?.firstName || 
                                      (window as any).Clerk?.user?.username || 
@@ -1076,7 +1077,7 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                             })
                           });
 
-                          const resData = await response.json().catch(() => ({}));
+                          const resData: any = await response.json().catch(() => ({}));
 
                           if (response.status === 409 || resData?.duplicate) {
                             const dupMsg = resData?.error || "သင်သည် ဤ သင်တန်းကို ဝယ်ယူပြီးဖြစ်ပါသည်";

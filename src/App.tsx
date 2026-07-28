@@ -1955,7 +1955,9 @@ export default function App() {
   const fetchOrdersFromD1 = async () => {
     setIsSyncingD1Orders(true);
     try {
-      const res = await fetch('/api/orders');
+      const isAdmin = localStorage.getItem('thai_user_is_admin') === 'true';
+      const endpoint = (!isAdmin && user?.id) ? `/api/orders?userId=${user.id}` : '/api/orders';
+      const res = await fetch(endpoint);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.orders) && data.orders.length > 0) {
@@ -3468,6 +3470,14 @@ startxref
     }
   };
 
+  if (!isAuthLoaded || !isUserLoaded) {
+    return (
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-brand-light">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-brand-purple"></div>
+      </div>
+    );
+  }
+
   const isLessonsActive = dashboardTab === 'lessons';
   const isNotebookActive = dashboardTab === 'notebook';
   const isProfileActive = dashboardTab === 'profile';
@@ -3475,38 +3485,39 @@ startxref
   const isCoursesActive = ['orientation', 'handbook', 'alphabet'].includes(dashboardTab);
 
   const isCourseUnlocked = (courseId: string) => {
-    if (currentUser === 'admin' || (currentUser && registeredUsers.find(u => u.username === currentUser)?.role === 'admin')) {
+    if (currentUser === 'admin' || (currentUser && registeredUsers.find(u => u?.username === currentUser)?.role === 'admin')) {
       return true;
     }
     if (courseId === 'course-basic') {
       return true;
     }
-    if (unlockedCourses.includes(courseId)) {
+    if (Array.isArray(unlockedCourses) && unlockedCourses.includes(courseId)) {
       return true;
     }
-    return orders.some(o => 
-      o.username.toLowerCase() === (currentUser || "").toLowerCase() && 
-      o.status === 'completed' &&
-      (o.id === courseId || o.itemName.toLowerCase().includes(courseId.toLowerCase().replace('course-', '')))
+    return Array.isArray(orders) && orders.some(o => 
+      (o?.username || "").toLowerCase() === (currentUser || "").toLowerCase() && 
+      o?.status === 'completed' &&
+      (o?.id === courseId || (o?.itemName || "").toLowerCase().includes((courseId || "").toLowerCase().replace('course-', '')))
     );
   };
 
   const getSortedCourses = () => {
-    const hasPremiumUnlocked = courses.some(c => c.id !== 'course-basic' && isCourseUnlocked(c.id));
+    if (!courses || !Array.isArray(courses)) return [];
+    const hasPremiumUnlocked = courses.some(c => c?.id !== 'course-basic' && isCourseUnlocked(c?.id || ''));
     if (hasPremiumUnlocked) {
       return [...courses].sort((a, b) => {
-        const aUnlocked = a.id !== 'course-basic' && isCourseUnlocked(a.id);
-        const bUnlocked = b.id !== 'course-basic' && isCourseUnlocked(b.id);
+        const aUnlocked = a?.id !== 'course-basic' && isCourseUnlocked(a?.id || '');
+        const bUnlocked = b?.id !== 'course-basic' && isCourseUnlocked(b?.id || '');
         if (aUnlocked && !bUnlocked) return -1;
         if (!aUnlocked && bUnlocked) return 1;
-        if (a.id === 'course-basic' && b.id !== 'course-basic') return 1;
-        if (a.id !== 'course-basic' && b.id === 'course-basic') return -1;
+        if (a?.id === 'course-basic' && b?.id !== 'course-basic') return 1;
+        if (a?.id !== 'course-basic' && b?.id === 'course-basic') return -1;
         return 0;
       });
     } else {
       return [...courses].sort((a, b) => {
-        if (a.id === 'course-basic' && b.id !== 'course-basic') return -1;
-        if (a.id !== 'course-basic' && b.id === 'course-basic') return 1;
+        if (a?.id === 'course-basic' && b?.id !== 'course-basic') return -1;
+        if (a?.id !== 'course-basic' && b?.id === 'course-basic') return 1;
         return 0;
       });
     }
@@ -4707,7 +4718,7 @@ startxref
               </div>
 
               {/* Course specific companion groups */}
-              {courses.map((course) => {
+              {Array.isArray(courses) ? courses.map((course) => {
                 const courseResources = storeItems.filter(item => item.courseId === course.id);
                 const hasDirectResources = course.resources && course.resources.length > 0;
                 const hasStoreResources = courseResources.length > 0;
@@ -4847,7 +4858,7 @@ startxref
                     </div>
                   </div>
                 );
-              })}
+              }) : null}
 
               {/* General Reference PDF library section */}
               <div className="space-y-4 pt-4 text-left">
@@ -6617,7 +6628,7 @@ startxref
 
                   {isCourseStoreExpanded && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-1 animate-fade-in">
-                      {courses.map((course) => {
+                      {Array.isArray(courses) ? courses.map((course) => {
                         const calculatedThb = Math.round(course.priceAmount / 70); // Simulated approximate THB rate
                         return (
                           <div 
@@ -6707,7 +6718,7 @@ startxref
                             </div>
                           </div>
                         );
-                      })}
+                      }) : null}
                     </div>
                   )}
 
@@ -7590,7 +7601,7 @@ startxref
                             </p>
 
                             <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-                              {courses.map((course) => {
+                              {Array.isArray(courses) ? courses.map((course) => {
                                 const isSelected = !courseIsNew && adminSelectedCourseId === course.id;
                                 return (
                                   <div
@@ -7661,7 +7672,7 @@ startxref
                                     </div>
                                   </div>
                                 );
-                              })}
+                              }) : null}
                             </div>
                           </div>
 
@@ -8838,11 +8849,11 @@ startxref
                                   className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold font-sans text-brand-dark focus:border-brand-purple focus:outline-none transition-all"
                                 >
                                   <option value="">General / None (No Course Filter)</option>
-                                  {courses.map(course => (
+                                  {Array.isArray(courses) ? courses.map(course => (
                                     <option key={course.id} value={course.id}>
                                       📚 {course.name}
                                     </option>
-                                  ))}
+                                  )) : null}
                                 </select>
                               </div>
 
@@ -10337,11 +10348,11 @@ startxref
                         className="bg-white border-2 border-brand-purple/20 px-3 py-1.5 rounded-lg text-xs font-black font-sans text-brand-purple focus:border-brand-purple focus:outline-none cursor-pointer"
                       >
                         <option value="all">⚡ ALL COURSES (သင်တန်းအားလုံး)</option>
-                        {courses.map(c => (
+                        {Array.isArray(courses) ? courses.map(c => (
                           <option key={c.id} value={c.id}>
                             🎓 {c.name}
                           </option>
-                        ))}
+                        )) : null}
                       </select>
                     </div>
                     <div className="text-[9.5px] font-sans font-semibold text-brand-muted sm:ml-auto">
@@ -11063,11 +11074,11 @@ startxref
                                     onChange={(e) => updateLessonField(selectedLesson.id, 'courseId', e.target.value)}
                                     className="w-full px-3 py-2 border-2 border-brand-purple/20 rounded-lg text-xs font-black font-sans text-brand-purple focus:border-brand-purple focus:outline-none cursor-pointer bg-white"
                                   >
-                                    {courses.map(c => (
+                                    {Array.isArray(courses) ? courses.map(c => (
                                       <option key={c.id} value={c.id}>
                                         🎓 {c.name} ({c.id})
                                       </option>
-                                    ))}
+                                    )) : null}
                                   </select>
                                 </div>
                               </div>

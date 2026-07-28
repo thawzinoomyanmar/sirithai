@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { WordBreakdown, Lesson } from '../types';
-import { pdfVocabulary } from '../data/pdfVocabulary';
 
 // 1. Core Vocabulary Extraction & Matching Algorithm
 const getVocabForSentence = (sentence: string, dictionary: WordBreakdown[]): WordBreakdown[] => {
@@ -87,19 +86,18 @@ export const GrammarVocabDropdown: React.FC<GrammarVocabDropdownProps> = ({ sent
   const masterDict = React.useMemo(() => {
     const dictionaryMap = new Map<string, WordBreakdown>();
     
-    // Add words from pdfVocabulary
-    let activePdfVocabulary = pdfVocabulary;
+    // Add words from local storage if available (previously from pdfVocabulary)
     const saved = localStorage.getItem('thai_pdf_vocabulary');
     if (saved) {
       try {
-        activePdfVocabulary = JSON.parse(saved);
+        const activePdfVocabulary = JSON.parse(saved);
+        Object.values(activePdfVocabulary).forEach(words => {
+          (words as WordBreakdown[]).forEach(w => {
+            if (w.thai) dictionaryMap.set(w.thai, w);
+          });
+        });
       } catch (e) {}
     }
-    Object.values(activePdfVocabulary).forEach(words => {
-      (words as WordBreakdown[]).forEach(w => {
-        if (w.thai) dictionaryMap.set(w.thai, w);
-      });
-    });
     
     // Add words from lessons dialogue if available
     if (allLessons) {
