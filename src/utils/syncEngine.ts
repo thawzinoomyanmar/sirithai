@@ -154,7 +154,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
             })
           });
 
-          const resData = await response.json().catch(() => null);
+          const resData: any = await response.json().catch(() => null);
 
           if (response.ok && resData?.success && !resData?.offline_queued) {
             await localDB.transactions.update(txn.id, { is_synced: 1 });
@@ -181,7 +181,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const d1Res = await response.json();
+        const d1Res: any = await response.json();
 
         if (d1Res.success && (d1Res.data || d1Res.results)) {
           const words = d1Res.data || d1Res.results;
@@ -226,7 +226,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for courses...', 'info');
         const coursesRes = await fetch('/api/courses');
         if (coursesRes.ok) {
-          const coursesResData = await coursesRes.json();
+          const coursesResData: any = await coursesRes.json();
           const courses = coursesResData.data || coursesResData;
           await localDB.transaction('rw', localDB.courses, async () => {
             await localDB.courses.clear();
@@ -238,7 +238,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
               });
             }
           });
-          addSyncLog('sync', `Successfully pulled ${coursesData.length} courses from Cloudflare D1.`, 'success');
+          addSyncLog('sync', `Successfully pulled ${courses.length} courses from Cloudflare D1.`, 'success');
         }
       }
 
@@ -248,7 +248,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for lessons...', 'info');
         const lessonsRes = await fetch('/api/lessons');
         if (lessonsRes.ok) {
-          const lessonsResData = await lessonsRes.json();
+          const lessonsResData: any = await lessonsRes.json();
           const lessons = lessonsResData.data || lessonsResData;
           await localDB.transaction('rw', localDB.lessons, async () => {
             await localDB.lessons.clear();
@@ -263,7 +263,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
               });
             }
           });
-          addSyncLog('sync', `Successfully pulled ${lessonsData.length} lessons from Cloudflare D1.`, 'success');
+          addSyncLog('sync', `Successfully pulled ${lessons.length} lessons from Cloudflare D1.`, 'success');
         }
       }
 
@@ -273,7 +273,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for grammar chapters...', 'info');
         const grammarRes = await fetch('/api/grammar-chapters');
         if (grammarRes.ok) {
-          const grammarResData = await grammarRes.json();
+          const grammarResData: any = await grammarRes.json();
           const chapters = grammarResData.data || grammarResData;
           await localDB.transaction('rw', localDB.grammar_chapters, async () => {
             await localDB.grammar_chapters.clear();
@@ -285,7 +285,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
               });
             }
           });
-          addSyncLog('sync', `Successfully pulled ${grammarData.length} grammar chapters from Cloudflare D1.`, 'success');
+          addSyncLog('sync', `Successfully pulled ${chapters.length} grammar chapters from Cloudflare D1.`, 'success');
         }
       }
 
@@ -295,7 +295,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
         addSyncLog('sync', 'Querying Cloudflare D1 for alphabet...', 'info');
         const alphabetRes = await fetch('/api/alphabet');
         if (alphabetRes.ok) {
-          const alphabetResData = await alphabetRes.json();
+          const alphabetResData: any = await alphabetRes.json();
           const alphabets = alphabetResData.data || alphabetResData;
           await localDB.transaction('rw', localDB.alphabet, async () => {
             await localDB.alphabet.clear();
@@ -309,7 +309,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
               });
             }
           });
-          addSyncLog('sync', `Successfully pulled ${alphabetData.length} alphabet records from Cloudflare D1.`, 'success');
+          addSyncLog('sync', `Successfully pulled ${alphabets.length} alphabet records from Cloudflare D1.`, 'success');
         }
       }
     } catch (err: any) {

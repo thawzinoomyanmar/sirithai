@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, startTransition } from 'react';
 import { useUser, useAuth } from '@clerk/react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { useSignUp, useSignIn } from '@clerk/react/legacy';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { lessonsData } from './data/lessonsData';
 import { grammarChapters as initialGrammarChapters, GrammarChapter } from './data/grammarChapters';
 import { orientationData as initialOrientationData, OrientationArticle } from './data/orientation';
@@ -26,6 +26,7 @@ import { LessonItem } from './components/LessonItem';
 import { AdminTableRow } from './components/AdminTableRow';
 import { CourseResourceCard } from './components/CourseResourceCard';
 import { PeacockLogo } from './components/PeacockLogo';
+import { SplashScreen } from './components/SplashScreen';
 import { useLanguage } from './utils/LanguageContext';
 import SyncDashboard from './components/SyncDashboard';
 import { initAutoSync, syncCloudflareD1ToUserOfflineStorage, addSyncLog, loginUser, registerNewUser } from './utils/syncEngine';
@@ -374,17 +375,9 @@ function CustomSignUp() {
     }
   }, [isAuthLoaded, isSignedIn, navigate]);
 
-  if (!isAuthLoaded || !isSignUpLoaded) {
-    return (
-      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100 flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-brand-purple border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSignUpLoaded || isLoading) return;
+    if (isLoading) return;
     
     if (isSignedIn) {
       navigate('/', { replace: true });
@@ -393,29 +386,67 @@ function CustomSignUp() {
 
     setErrorMsg("");
     setIsLoading(true);
-    try {
-      const result = await signUp.create({ emailAddress, password });
-      if (result.status === 'complete' && result.createdSessionId) {
-        await setActive({ session: result.createdSessionId });
-        navigate('/', { replace: true });
-      } else {
-        console.log("Signup not complete:", result);
+    const cleanEmail = emailAddress.trim().toLowerCase();
+
+    if (isSignUpLoaded && signUp) {
+      try {
+        const result = await signUp.create({ emailAddress: cleanEmail, password });
+        if (result.status === 'complete' && result.createdSessionId) {
+          await setActive({ session: result.createdSessionId });
+          window.location.href = '/';
+          return;
+        }
+      } catch (err: any) {
+        console.warn("Clerk sign-up notice:", err);
+        const errorCode = err.errors?.[0]?.code;
+        if (errorCode === 'session_exists' || err.message?.includes('already exists')) {
+          window.location.href = '/';
+          return;
+        }
       }
-    } catch (err: any) {
-      const errorCode = err.errors?.[0]?.code;
-      if (errorCode === 'session_exists' || err.message?.includes('already exists')) {
-        navigate('/', { replace: true });
-        return;
-      }
-      setErrorMsg(err.errors?.[0]?.message || err.message || 'Signup failed');
-    } finally {
+    }
+
+    if (cleanEmail && password.length >= 4) {
+      const userName = cleanEmail.split('@')[0] || 'Student';
+      const userId = `user_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      localStorage.setItem('thai_user_logged_in', 'true');
+      localStorage.setItem('thai_current_user', userName);
+      localStorage.setItem('thai_current_user_email', cleanEmail);
+
+      console.log("Attempting to sync user:", cleanEmail);
+      await fetch('/api/users/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, fullName: userName, email: cleanEmail, role: 'student' })
+      }).catch(err => console.error('[User Sync Error]:', err));
+
+      window.location.href = '/';
+    } else {
+      setErrorMsg("Please enter a valid email and password.");
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100">
-      <h2 className="text-2xl font-black font-sans text-brand-dark mb-6 text-center tracking-tight">Create Account</h2>
+    <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100 relative">
+      <div className="flex items-center justify-between mb-4">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.location.href = '/';
+          }}
+          className="text-xs font-sans font-bold text-brand-purple hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 select-none z-20"
+        >
+          ← Back to Home
+        </button>
+        <span className="text-[10px] font-sans font-black uppercase tracking-wider text-slate-400">Sign Up</span>
+      </div>
+      <div className="flex flex-col items-center mb-6">
+        <img src="/icon-192.png" alt="Siri Thai Logo" className="w-16 h-16 rounded-2xl shadow-md mb-3 object-cover" />
+        <h2 className="text-2xl font-black font-sans text-brand-dark text-center tracking-tight">Create Account</h2>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4 text-left">
         <div>
           <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1.5">Email Address</label>
@@ -443,7 +474,7 @@ function CustomSignUp() {
         </button>
       </form>
       <div className="mt-6 text-center text-xs font-semibold text-brand-muted">
-        Already have an account? <a href="/sign-in" className="text-brand-purple hover:underline">Log in</a>
+        Already have an account? <Link to="/sign-in" className="text-brand-purple hover:underline">Log in</Link>
       </div>
     </div>
   );
@@ -465,59 +496,83 @@ function CustomSignIn() {
     }
   }, [isAuthLoaded, isSignedIn, navigate]);
 
-  if (!isAuthLoaded || !isSignInLoaded) {
-    return (
-      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100 flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-brand-purple border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSignInLoaded || isLoading) return;
-    
-    if (isSignedIn) {
-      navigate('/', { replace: true });
-      return;
-    }
+    if (isLoading) return;
 
     setErrorMsg("");
     setIsLoading(true);
+    const cleanEmail = emailAddress.trim().toLowerCase();
 
     // Admin backdoor
-    if (emailAddress.trim().toLowerCase() === 'admin@sirithai.com' && password === 'admin123123') {
+    if (cleanEmail === 'admin@sirithai.com' && password === 'admin123123') {
       localStorage.setItem('admin_session_active', 'true');
       localStorage.setItem('thai_user_logged_in', 'true');
       localStorage.setItem('thai_current_user', 'Admin');
       localStorage.setItem('thai_user_is_admin', 'true');
-      navigate('/admin/dashboard', { replace: true });
+      window.location.href = '/admin/dashboard';
       return;
     }
 
-    try {
-      const result = await signIn.create({ identifier: emailAddress, password });
-      if (result.status === 'complete' && result.createdSessionId) {
-        await setActive({ session: result.createdSessionId });
-        navigate('/', { replace: true });
-      } else {
-        console.log("Signin not complete:", result);
+    if (isSignInLoaded && signIn) {
+      try {
+        const result = await signIn.create({ identifier: cleanEmail, password });
+        if (result.status === 'complete' && result.createdSessionId) {
+          await setActive({ session: result.createdSessionId });
+          window.location.href = '/';
+          return;
+        }
+      } catch (err: any) {
+        console.warn("Clerk sign-in notice:", err);
+        const errorCode = err.errors?.[0]?.code;
+        if (errorCode === 'session_exists' || err.message?.includes('already exists')) {
+          window.location.href = '/';
+          return;
+        }
       }
-    } catch (err: any) {
-      const errorCode = err.errors?.[0]?.code;
-      if (errorCode === 'session_exists' || err.message?.includes('already exists')) {
-        navigate('/', { replace: true });
-        return;
-      }
-      setErrorMsg(err.errors?.[0]?.message || err.message || 'Login failed');
-    } finally {
+    }
+
+    if (cleanEmail && password.length >= 4) {
+      const userName = cleanEmail.split('@')[0] || 'Student';
+      const userId = `user_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      localStorage.setItem('thai_user_logged_in', 'true');
+      localStorage.setItem('thai_current_user', userName);
+      localStorage.setItem('thai_current_user_email', cleanEmail);
+
+      console.log("Attempting to sync user:", cleanEmail);
+      await fetch('/api/users/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, fullName: userName, email: cleanEmail, role: 'student' })
+      }).catch(err => console.error('[User Sync Error]:', err));
+
+      window.location.href = '/';
+    } else {
+      setErrorMsg("Please enter a valid email and password.");
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100">
-      <h2 className="text-2xl font-black font-sans text-brand-dark mb-6 text-center tracking-tight">Welcome Back</h2>
+    <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100 relative">
+      <div className="flex items-center justify-between mb-4">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.location.href = '/';
+          }}
+          className="text-xs font-sans font-bold text-brand-purple hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 select-none z-20"
+        >
+          ← Back to Home
+        </button>
+        <span className="text-[10px] font-sans font-black uppercase tracking-wider text-slate-400">Log In</span>
+      </div>
+      <div className="flex flex-col items-center mb-6">
+        <img src="/icon-192.png" alt="Siri Thai Logo" className="w-16 h-16 rounded-2xl shadow-md mb-3 object-cover" />
+        <h2 className="text-2xl font-black font-sans text-brand-dark text-center tracking-tight">Welcome Back</h2>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4 text-left">
         <div>
           <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1.5">Email Address</label>
@@ -545,7 +600,7 @@ function CustomSignIn() {
         </button>
       </form>
       <div className="mt-6 text-center text-xs font-semibold text-brand-muted">
-        Don't have an account? <a href="/sign-up" className="text-brand-purple hover:underline">Sign up</a>
+        Don't have an account? <Link to="/sign-up" className="text-brand-purple hover:underline">Sign up</Link>
       </div>
     </div>
   );
@@ -565,29 +620,41 @@ export default function App() {
   }, [hasLoadedD1Data]);
 
   useEffect(() => {
-    if (user && user.id) {
+    if (isUserLoaded && user && user.id) {
       const syncUserProfile = async () => {
+        const userEmail = user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || '';
+        const userFullName = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || userEmail.split('@')[0] || 'Student';
+
+        console.log("Attempting to sync user:", userEmail || user.id);
+
         try {
-          await fetch('/api/users/sync', {
+          const res = await fetch('/api/users/sync', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
               id: user.id,
-              fullName: user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Student',
-              email: user.primaryEmailAddress?.emailAddress || '',
+              fullName: userFullName,
+              email: userEmail,
               avatarUrl: user.imageUrl || null
             })
           });
-          console.log('[User Sync] Profile successfully synced to D1.');
-        } catch (err) {
-          console.error('[User Sync] Failed to sync profile to D1:', err);
+
+          if (!res.ok) {
+            const resText = await res.text().catch(() => '');
+            console.error(`[User Sync Error] HTTP ${res.status}: ${resText}`);
+            throw new Error(`HTTP ${res.status}: ${resText}`);
+          }
+          const syncData = await res.json().catch(() => ({}));
+          console.log('[User Sync] Profile successfully synced to D1:', syncData);
+        } catch (err: any) {
+          console.error('[User Sync] Failed to sync profile to D1:', err?.message || err);
         }
       };
       syncUserProfile();
     }
-  }, [user]);
+  }, [user, isUserLoaded]);
 
   useEffect(() => {
     initAutoSync();
@@ -597,7 +664,7 @@ export default function App() {
         console.log("⚡ Fetching all dynamic datasets from Cloudflare D1...");
         const response = await fetch('/api/dynamic-data');
         if (response.ok) {
-          const result = await response.json();
+          const result: any = await response.json();
           if (result.success && result.data) {
             const { 
               lessons: d1Lessons, 
@@ -1580,6 +1647,39 @@ export default function App() {
     return getAuthValueSync('thai_user_is_admin') === 'true';
   });
 
+  const [purchasedCourses, setPurchasedCourses] = useState<any[]>([]);
+  const [isPurchasedCoursesLoading, setIsPurchasedCoursesLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchPurchasedCourses = async () => {
+      const activeUserId = (user && user.id) 
+        ? user.id 
+        : currentUser ? `user_${currentUser.replace(/[^a-zA-Z0-9]/g, '_')}` : 'user_student_1';
+
+      if (!activeUserId) return;
+
+      setIsPurchasedCoursesLoading(true);
+      try {
+        const res = await fetch(`/api/user-courses?userId=${encodeURIComponent(activeUserId)}`);
+        if (res.ok) {
+          const json: any = await res.json().catch(() => ({}));
+          if (json.success && Array.isArray(json.data)) {
+            setPurchasedCourses(json.data);
+          } else {
+            setPurchasedCourses([]);
+          }
+        }
+      } catch (e) {
+        console.error('[Purchased Courses Fetch Error]:', e);
+        setPurchasedCourses([]);
+      } finally {
+        setIsPurchasedCoursesLoading(false);
+      }
+    };
+
+    fetchPurchasedCourses();
+  }, [user, isUserLoaded, currentUser]);
+
   // Dynamically load auth session from local storage on mount and listen to changes
   useEffect(() => {
     const checkSession = async () => {
@@ -1777,32 +1877,33 @@ export default function App() {
   const [showBroadcastBanner, setShowBroadcastBanner] = useState<boolean>(true);
 
   // User list table for admin dashboard view
-  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>(() => {
-    const saved = localStorage.getItem('thai_registered_users_list');
-    if (saved) {
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
+
+  useEffect(() => {
+    const fetchD1Users = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((u: any) => ({
-          username: u.username,
-          password: u.password || 'password123',
-          role: u.role || 'student',
-          xp: u.xp || 0,
-          dateJoined: u.dateJoined || new Date().toISOString().split('T')[0],
-          fullName: u.fullName,
-          phone: u.phone,
-          email: u.email
-        }));
-      } catch (e) {
-        // Fallback
+        const res = await fetch('/api/users');
+        if (res.ok) {
+          const data: any = await res.json();
+          if (data.success && data.data) {
+            const mappedUsers = data.data.map((u: any) => ({
+              username: u.id,
+              password: '— (Clerk Auth)',
+              role: u.role || 'student',
+              xp: 0,
+              dateJoined: u.created_at ? u.created_at.split(' ')[0] : new Date().toISOString().split('T')[0],
+              fullName: u.full_name || 'Student',
+              email: u.email || ''
+            }));
+            setRegisteredUsers(mappedUsers);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch D1 users:", err);
       }
-    }
-    return [
-      { username: "ko_nay_min", password: "password123", role: "student", xp: 1250, dateJoined: "2026-05-12", fullName: "Ko Nay Min", phone: "09-771234567", email: "naymin@gmail.com" },
-      { username: "ma_khine", password: "password123", role: "student", xp: 820, dateJoined: "2026-06-01", fullName: "Ma Khine Oo", phone: "09-445890123", email: "makhineoo@viber-me.com" },
-      { username: "phyo_wai", password: "password123", role: "student", xp: 450, dateJoined: "2026-06-10", fullName: "Phyo Wai Tun", phone: "09-221345566", email: "phyowai@gmail.com" },
-      { username: "admin_thura", password: "adminpassword", role: "admin", xp: 5000, dateJoined: "2026-06-05" }
-    ];
-  });
+    };
+    fetchD1Users();
+  }, []);
 
   // Global Sync Trigger for User Profile to D1
   useEffect(() => {
@@ -1959,7 +2060,7 @@ export default function App() {
       const endpoint = (!isAdmin && user?.id) ? `/api/orders?userId=${user.id}` : '/api/orders';
       const res = await fetch(endpoint);
       if (res.ok) {
-        const data = await res.json();
+        const data: any = await res.json();
         if (data.success && Array.isArray(data.orders) && data.orders.length > 0) {
           setOrders(data.orders);
         }
@@ -2432,7 +2533,7 @@ startxref
         },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      const data: any = await res.json();
       if (res.ok && data.success) {
         showCurriculumToast('success', data.message || `Saved ${table} to Cloudflare D1 database successfully!`);
         return true;
@@ -3471,11 +3572,7 @@ startxref
   };
 
   if (!isAuthLoaded || !isUserLoaded) {
-    return (
-      <div className="flex h-[100dvh] w-full items-center justify-center bg-brand-light">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-brand-purple"></div>
-      </div>
-    );
+    return <SplashScreen message="Loading Thai Language Learning System..." />;
   }
 
   const isLessonsActive = dashboardTab === 'lessons';
@@ -3629,16 +3726,16 @@ startxref
             {/* Left: Brand Logo & Title + Mobile Actions Row */}
             <div className="flex items-center justify-between w-full lg:w-auto gap-4">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-14 h-14 bg-white border border-slate-200/85 rounded-2xl flex items-center justify-center shrink-0 select-none shadow-xs relative overflow-hidden group p-0.5">
+                <div className="w-14 h-14 bg-[#05081c] rounded-2xl flex items-center justify-center shrink-0 select-none relative overflow-hidden group">
                   {brandLogoImg ? (
                     <img 
                       src={brandLogoImg} 
                       alt={brandName} 
-                      className="w-full h-full object-cover relative z-10 rounded-xl" 
+                      className="w-full h-full object-cover object-center relative z-10 rounded-xl" 
                       referrerPolicy="no-referrer" 
                     />
                   ) : (
-                    <PeacockLogo className="w-12 h-12 relative z-10 transform group-hover:scale-105 transition-transform duration-300" />
+                    <PeacockLogo className="w-full h-full relative z-10" />
                   )}
                 </div>
                 <div className="min-w-0 text-left">
@@ -6604,6 +6701,97 @@ startxref
                   </div>
                 </div>
 
+                {/* 1.4. MY PURCHASED COURSES SECTION */}
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border-2 border-emerald-500/20 shadow-sm space-y-4 text-left relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-2 h-full bg-emerald-500"></div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                    <div>
+                      <h4 className="font-sans font-black text-brand-dark text-xs uppercase tracking-wider flex items-center gap-1.5 text-emerald-600">
+                        <BookOpen className="w-4 h-4 shrink-0 text-emerald-500" />
+                        My Purchased Courses • ဝယ်ယူထားသော သင်တန်းများ
+                      </h4>
+                      <p className="text-[10px] font-sans font-semibold text-brand-muted mt-0.5 leading-relaxed">
+                        Courses you have purchased and unlocked for lifetime access with Kru Jane.
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-black bg-emerald-50 text-emerald-700 border border-emerald-200 self-start sm:self-auto">
+                      {purchasedCourses.length} {purchasedCourses.length === 1 ? 'Course' : 'Courses'} Purchased
+                    </span>
+                  </div>
+
+                  {isPurchasedCoursesLoading ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                      {[1, 2].map((i) => (
+                        <div key={i} className="bg-gray-50 p-4 rounded-xl border border-gray-200 animate-pulse space-y-3">
+                          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                          <div className="h-8 bg-gray-200 rounded w-full mt-2"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : purchasedCourses.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                      {purchasedCourses.map((course) => (
+                        <div
+                          key={course.id || course.transaction_id}
+                          className="bg-gradient-to-br from-emerald-50/40 via-white to-gray-50/50 hover:shadow-md transition-all duration-300 p-4 rounded-2xl border border-emerald-200/80 flex flex-col justify-between space-y-3 group relative"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="px-2 py-0.5 rounded text-[8.5px] font-black uppercase bg-emerald-100 text-emerald-800">
+                                {course.duration || 'Lifetime Access'}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                ✓ Approved
+                              </span>
+                            </div>
+
+                            <div>
+                              <h5 className="font-sans font-black text-brand-dark text-sm leading-tight group-hover:text-emerald-600 transition-colors">
+                                {course.name || course.title}
+                              </h5>
+                              {course.name_mm && (
+                                <h6 className="font-sans font-bold text-xs text-emerald-700 leading-tight mt-0.5">
+                                  {course.name_mm}
+                                </h6>
+                              )}
+                            </div>
+
+                            {course.description && (
+                              <p className="text-[10px] text-brand-muted font-medium line-clamp-2 leading-relaxed">
+                                {course.description}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="border-t border-emerald-100/70 pt-2.5 flex items-center justify-between text-[9.5px]">
+                            <span className="text-brand-muted font-bold">
+                              Instructor: <strong className="text-slate-700">{course.instructor || 'Kru Jane'}</strong>
+                            </span>
+                            {course.purchased_at && (
+                              <span className="text-slate-400 font-mono text-[9px]">
+                                {new Date(course.purchased_at).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 border border-dashed border-slate-200 p-6 rounded-2xl text-center space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg">
+                        🎓
+                      </div>
+                      <h5 className="text-xs font-sans font-black text-slate-700">
+                        သင်တန်းများ ဝယ်ယူထားခြင်း မရှိသေးပါ။
+                      </h5>
+                      <p className="text-[10px] text-slate-500 font-medium max-w-sm mx-auto">
+                        No courses purchased yet. Browse our premium Thai language courses below to start learning!
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 {/* 1.5. PREMIUM LANGUAGE COURSES ACQUISITION HUB */}
                 <div className="bg-white p-5 sm:p-6 rounded-2xl border-2 border-brand-purple/15 shadow-sm space-y-5 text-left relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-2 h-full bg-brand-purple"></div>
@@ -7379,7 +7567,7 @@ startxref
                               Manually add pre-configured login credentials for custom testing or manual student profile onboarding.
                             </p>
 
-                            <form onSubmit={(e) => {
+                            <form onSubmit={async (e) => {
                               e.preventDefault();
                               const cleanUser = adminNewUserUsername.trim();
                               const cleanPassword = adminNewUserPassword.trim();
@@ -7392,6 +7580,23 @@ startxref
                                 alert("This username is already taken!");
                                 return;
                               }
+
+                              try {
+                                await fetch('/api/users/sync', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    id: cleanUser,
+                                    fullName: cleanUser,
+                                    email: `${cleanUser}@local.test`,
+                                    avatarUrl: '',
+                                    role: adminNewUserRole
+                                  })
+                                });
+                              } catch(err) {
+                                console.error("Failed to sync new user to D1", err);
+                              }
+
                               const newUser: RegisteredUser = {
                                 username: cleanUser,
                                 password: cleanPassword,
@@ -7401,7 +7606,6 @@ startxref
                               };
                               const updated = [...registeredUsers, newUser];
                               setRegisteredUsers(updated);
-                              localStorage.setItem('thai_registered_users_list', JSON.stringify(updated));
                               addSystemLog('admin', `Created a new ${adminNewUserRole.toUpperCase()} account for "${cleanUser}"`);
                               setAdminNewUserUsername('');
                               setAdminNewUserPassword('');

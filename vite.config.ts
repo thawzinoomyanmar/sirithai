@@ -85,6 +85,139 @@ function mockApiDevPlugin() {
           return;
         }
 
+        if (req.url?.startsWith('/api/users/sync')) {
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          let bodyStr = '';
+          req.on('data', (chunk: any) => { bodyStr += chunk; });
+          req.on('end', async () => {
+            res.setHeader('Content-Type', 'application/json');
+            try {
+              const body = JSON.parse(bodyStr || '{}');
+              const id = body.id ? String(body.id).trim().replace(/'/g, "''") : '';
+              const fullName = body.fullName ? String(body.fullName).replace(/'/g, "''") : 'Anonymous Student';
+              const email = body.email ? String(body.email).replace(/'/g, "''") : '';
+              const avatarUrl = body.avatarUrl ? String(body.avatarUrl).replace(/'/g, "''") : '';
+              const role = body.role ? String(body.role).replace(/'/g, "''") : 'student';
+
+              if (!id) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ success: false, error: 'User ID is required' }));
+                return;
+              }
+
+              const sql = `
+                INSERT INTO users_profile (id, full_name, email, avatar_url, role)
+                VALUES ('${id}', '${fullName}', '${email}', '${avatarUrl}', '${role}')
+                ON CONFLICT(id) DO UPDATE SET
+                  full_name = excluded.full_name,
+                  email = excluded.email,
+                  avatar_url = excluded.avatar_url,
+                  role = COALESCE(users_profile.role, excluded.role);
+              `;
+
+              await execPromise(`npx wrangler d1 execute sirithai-db --remote --command="${sql}"`).catch(e => console.warn("Remote D1 user sync note:", e?.message));
+              await execPromise(`npx wrangler d1 execute sirithai-db --local --command="${sql}"`).catch(e => console.warn("Local D1 user sync note:", e?.message));
+
+              res.statusCode = 200;
+              res.end(JSON.stringify({ success: true, message: 'User synced successfully', id }));
+            } catch (err: any) {
+              console.error("[Dev Server User Sync Error]:", err);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, error: err?.message }));
+            }
+          });
+          return;
+        }
+
+        if (req.url?.startsWith('/api/profile')) {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            const urlObj = new URL(req.url, 'http://localhost');
+            const userId = urlObj.searchParams.get('userId') || urlObj.searchParams.get('user_id') || urlObj.searchParams.get('id') || '';
+
+            if (!userId) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, error: 'userId parameter is required' }));
+              return;
+            }
+
+            const cleanId = userId.replace(/'/g, "''");
+            const profileRes = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT id, full_name, email, avatar_url, role, created_at FROM users_profile WHERE id = '${cleanId}';" --json`).catch(() => ({ stdout: '[]' }));
+            const parsedProfile = JSON.parse(profileRes.stdout || '[]');
+            const userProfile = (parsedProfile && parsedProfile[0] && parsedProfile[0].results && parsedProfile[0].results[0]) || null;
+
+            const countRes = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT COUNT(DISTINCT course_id) as total_purchased_courses FROM transactions WHERE user_id = '${cleanId}' AND status = 'approved';" --json`).catch(() => ({ stdout: '[]' }));
+            const parsedCount = JSON.parse(countRes.stdout || '[]');
+            const countRow = (parsedCount && parsedCount[0] && parsedCount[0].results && parsedCount[0].results[0]) || {};
+            const totalPurchasedCourses = Number(countRow.total_purchased_courses ?? countRow['COUNT(DISTINCT course_id)'] ?? 0);
+
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              success: true,
+              data: {
+                profile: userProfile,
+                totalPurchasedCourses,
+                userId
+              }
+            }));
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: e?.message }));
+          }
+          return;
+        }
+
+        if (req.url?.startsWith('/api/user-courses')) {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            const urlObj = new URL(req.url, 'http://localhost');
+            const userId = urlObj.searchParams.get('userId') || urlObj.searchParams.get('user_id') || urlObj.searchParams.get('id') || '';
+
+            if (!userId) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, error: 'userId parameter is required' }));
+              return;
+            }
+
+            const cleanId = userId.replace(/'/g, "''");
+            const sql = `SELECT c.*, t.created_at as purchased_at, t.id as transaction_id, t.status as transaction_status FROM transactions t JOIN courses c ON t.course_id = c.id WHERE t.user_id = '${cleanId}' AND t.status = 'approved' ORDER BY t.created_at DESC;`;
+            const coursesRes = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="${sql}" --json`).catch(() => ({ stdout: '[]' }));
+            const parsedCourses = JSON.parse(coursesRes.stdout || '[]');
+            const coursesList = (parsedCourses && parsedCourses[0] && parsedCourses[0].results) || [];
+
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              success: true,
+              data: coursesList,
+              userId,
+              count: coursesList.length
+            }));
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: e?.message }));
+          }
+          return;
+        }
+
+        if (req.url?.startsWith('/api/users') && !req.url.startsWith('/api/users/sync')) {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            const { stdout } = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT * FROM users_profile ORDER BY created_at DESC;" --json`);
+            const parsed = JSON.parse(stdout || '[]');
+            const results = (parsed && parsed[0] && parsed[0].results) || [];
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, data: results }));
+          } catch (e: any) {
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, data: [] }));
+          }
+          return;
+        }
+
         if (req.url?.startsWith('/api/admin/approve-payment') || req.url?.startsWith('/api/approve-payment')) {
           if (req.method === 'OPTIONS') {
             res.statusCode = 204;

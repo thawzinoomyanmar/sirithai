@@ -1,22 +1,17 @@
 import fs from 'fs';
 import path from 'path';
+import { DatabaseSync } from 'node:sqlite';
 
 export function getDB(context: any): any {
   let db = (context && context.env && context.env.DB) || (globalThis as any).env?.DB || (process.env as any).DB;
   if (!db) {
     try {
       const cwd = process.cwd();
-      console.log(`[dbHelper] Fallback active. CWD = ${cwd}`);
       const dir = path.join(cwd, '.wrangler/state/v3/d1/miniflare-D1DatabaseObject');
-      console.log(`[dbHelper] Target DB dir = ${dir}. Exists? = ${fs.existsSync(dir)}`);
       if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir).filter((f: string) => f.endsWith('.sqlite'));
-        console.log(`[dbHelper] SQLite files found:`, files);
+        const files = fs.readdirSync(dir).filter((f: string) => f.endsWith('.sqlite') && !f.startsWith('metadata'));
         if (files.length > 0) {
           const dbPath = path.join(dir, files[0]);
-          // Dynamic require string construction to prevent bundler compilation rewrites
-          const sqliteModule = 'node' + ':sqlite';
-          const { DatabaseSync } = require(sqliteModule);
           const localDb = new DatabaseSync(dbPath);
           db = {
             prepare(sql: string) {
@@ -45,7 +40,7 @@ export function getDB(context: any): any {
         }
       }
     } catch (e: any) {
-      console.warn("Local SQLite fallback failed:", e.message);
+      console.warn("Local SQLite fallback note:", e.message);
     }
   }
   return db;

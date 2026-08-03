@@ -36,7 +36,7 @@ export const EbookCard: React.FC<EbookCardProps> = React.memo(({ item, currentUs
 
       try {
         const res = await fetch(`/api/user/access?username=${encodeURIComponent(currentUser)}&itemId=${encodeURIComponent(item.id)}`);
-        const data = await res.json();
+        const data: any = await res.json();
         
         if (isMounted) {
           if (data.success && data.status) {

@@ -1,7 +1,7 @@
 import useSWR from 'swr';
 import { Lesson, Course, GrammarChapter } from '../types';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any>);
 
 export function useLessons() {
   const { data, error, isLoading } = useSWR<{ success: boolean; data: Lesson[] }>('/api/lessons', fetcher);

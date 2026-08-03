@@ -71,14 +71,36 @@ CREATE TABLE IF NOT EXISTS alphabet (
 CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     user_id TEXT,
-    amount REAL NOT NULL,
+    course_id TEXT,
+    item_name TEXT,
+    item_type TEXT,
+    amount REAL DEFAULT 0.0,
+    currency TEXT DEFAULT 'MMK',
     payment_method TEXT,
-    status TEXT DEFAULT 'pending',
+    slip_image TEXT,
     transaction_proof_url TEXT,
+    status TEXT DEFAULT 'pending',
+    admin_notes TEXT,
+    student_phone TEXT,
+    student_email TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_courses (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS app_data (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_progress (
+    user_id TEXT PRIMARY KEY,
+    progress_data TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

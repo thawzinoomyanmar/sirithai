@@ -1,63 +1,43 @@
-import { getDB } from './dbHelper';
+import { getDB, jsonResponse, handleOptions } from './dbHelper';
 
-export const handler = async (event: any, context: any) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Content-Type': 'application/json',
-  };
+export async function onRequestOptions() {
+  return handleOptions();
+}
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
-  }
-
-  const db = getDB(context);
-
-  if (!db) {
-    console.warn("[User Access API Netlify] D1 database binding missing.");
-    return {
-      statusCode: 503,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: 'D1 Binding Missing'
-      }),
-    };
-  }
-
+export async function onRequestGet(context: any) {
   try {
-    const params = event.queryStringParameters || {};
-    const userId = params.userId || params.user_id || params.username;
-    const courseId = params.courseId || params.course_id || params.itemId;
-
-    if (!userId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          success: false,
-          error: 'Missing required parameter: userId'
-        }),
-      };
+    const db = getDB(context);
+    if (!db) {
+      return jsonResponse({
+        success: false,
+        error: 'D1 Database binding (env.DB) missing'
+      }, 503);
     }
 
-    // Admins always have access
+    const url = new URL(context.request.url);
+    const userId = url.searchParams.get('userId') || url.searchParams.get('user_id') || url.searchParams.get('username');
+    const courseId = url.searchParams.get('courseId') || url.searchParams.get('course_id') || url.searchParams.get('itemId');
+
+    if (!userId) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing required parameter: userId'
+      }, 400);
+    }
+
+    // Admins always have full access
     if (userId.toLowerCase() === 'admin') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          status: 'approved',
-          courses: [{ course_id: courseId || 'course-advanced', status: 'approved' }]
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        status: 'approved',
+        courses: [{ course_id: courseId || 'course-advanced', status: 'approved' }]
+      }, 200);
     }
 
     let accessStatus = 'locked';
 
     if (courseId) {
+      // Query transactions table
       const sqlTx = `
         SELECT status, course_id, item_name 
         FROM transactions 
@@ -66,7 +46,6 @@ export const handler = async (event: any, context: any) => {
         ORDER BY created_at DESC 
         LIMIT 1
       `;
-
       const resultTx = await db.prepare(sqlTx).bind(userId, courseId, courseId, courseId).first();
 
       if (resultTx) {
@@ -78,6 +57,7 @@ export const handler = async (event: any, context: any) => {
           accessStatus = 'rejected';
         }
       } else {
+        // Fallback check user_courses table
         try {
           const sqlUC = `
             SELECT status FROM user_courses 
@@ -97,18 +77,15 @@ export const handler = async (event: any, context: any) => {
         }
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          userId,
-          courseId,
-          status: accessStatus
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        userId,
+        courseId,
+        status: accessStatus
+      }, 200);
     }
 
+    // Return list of all course statuses for the user
     const sqlAll = `
       SELECT course_id, item_name, status, created_at
       FROM transactions 
@@ -127,27 +104,18 @@ export const handler = async (event: any, context: any) => {
     const hasPending = courses.some((c: any) => c.status === 'pending');
     const overallStatus = hasApproved ? 'approved' : (hasPending ? 'pending' : 'locked');
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        userId,
-        status: overallStatus,
-        courses
-      }),
-    };
+    return jsonResponse({
+      success: true,
+      userId,
+      status: overallStatus,
+      courses
+    }, 200);
 
   } catch (err: any) {
     console.error('[User Access API Error]', err);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: 'Database operation failed',
-        details: err?.message || String(err),
-      }),
-    };
+    return jsonResponse({
+      success: false,
+      error: err?.message || 'Database operation failed'
+    }, 500);
   }
-};
+}

@@ -5,11 +5,12 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 import { LanguageProvider } from './utils/LanguageContext';
+import { SplashScreen } from './components/SplashScreen';
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded } = useAuth();
   const [hasTimedOut, setHasTimedOut] = useState(false);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     if (!isLoaded) {
       timeoutId = setTimeout(() => {
         setHasTimedOut(true);
-      }, 10000); // 10 seconds timeout
+      }, 10000);
     }
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
@@ -25,20 +26,12 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   }, [isLoaded]);
   
   if (!isLoaded) {
-    if (hasTimedOut) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-center p-4">
-          <div className="text-red-500 font-bold mb-2">Authentication Timeout</div>
-          <p className="text-sm text-gray-600">
-            The authentication service took too long to respond. Please check your connection, ad-blockers, or try refreshing the page.
-          </p>
-        </div>
-      );
-    }
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="w-8 h-8 border-4 border-brand-purple border-t-transparent rounded-full animate-spin"></div>
-      </div>
+      <SplashScreen
+        message="Authenticating & preparing your Thai course material..."
+        hasTimedOut={hasTimedOut}
+        onRetry={() => window.location.reload()}
+      />
     );
   }
   

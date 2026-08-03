@@ -36,34 +36,38 @@ export const handler = async (event: any, context: any) => {
       body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
     }
 
-    const { id, full_name, email, avatar_url, role } = body;
+    const { id, full_name, fullName, email, avatar_url, avatarUrl, role } = body;
 
-    if (!id || !full_name || !email) {
+    const userId = id ? String(id).trim() : '';
+    const name = full_name || fullName || '';
+    const mail = email || '';
+
+    if (!userId) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ success: false, error: 'Missing required fields (id, full_name, email)' }),
+        body: JSON.stringify({ success: false, error: 'Missing required field: id' }),
       };
     }
 
     const assignedRole = role === 'admin' ? 'admin' : 'student';
 
-    // Cloudflare D1 (SQLite) UPSERT
+    // Cloudflare D1 (SQLite) UPSERT into users_profile table
     const sql = `
-      INSERT INTO users (id, full_name, email, avatar_url, role, created_at)
+      INSERT INTO users_profile (id, full_name, email, avatar_url, role, created_at)
       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         full_name = excluded.full_name,
         email = excluded.email,
         avatar_url = excluded.avatar_url,
-        role = excluded.role
+        role = COALESCE(users_profile.role, excluded.role)
     `;
 
     await db.prepare(sql).bind(
-      id,
-      full_name,
-      email,
-      avatar_url || '',
+      userId,
+      name || mail.split('@')[0] || 'Student',
+      mail,
+      avatar_url || avatarUrl || '',
       assignedRole
     ).run();
 
@@ -72,7 +76,7 @@ export const handler = async (event: any, context: any) => {
       headers,
       body: JSON.stringify({
         success: true,
-        message: `User ${id} profile synchronized with D1 successfully.`,
+        message: `User ${userId} profile synchronized with D1 successfully.`,
       }),
     };
 
