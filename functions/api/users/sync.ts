@@ -3,6 +3,7 @@ import { getDB, jsonResponse, handleOptions } from '../dbHelper';
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   const req = context.request;
   const method = req.method;
+  const env = context.env;
 
   if (method === 'OPTIONS') {
     return handleOptions();
@@ -13,15 +14,18 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   }
 
   const db = getDB(context);
-  if (!db) {
-    return jsonResponse({ success: false, error: 'D1 database binding missing' }, 500);
+  if (!db && (!env || !env.DB)) {
+    console.error("D1 Database binding (env.DB) is undefined!");
+    return new Response("D1 Database binding (env.DB) is undefined!", { status: 500 });
   }
 
   try {
     const body = await req.json() as any;
+    console.log("Backend received body:", body);
     const { id, full_name, fullName, email, avatar_url, avatarUrl, role, phone, xp } = body;
 
     if (!id) {
+      console.warn("Backend Sync Warning: Missing user ID");
       return jsonResponse({ success: false, error: 'User ID is required' }, 400);
     }
 
@@ -37,14 +41,15 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        full_name = excluded.full_name,
-        email = excluded.email,
-        avatar_url = excluded.avatar_url,
+        full_name = COALESCE(NULLIF(excluded.full_name, ''), users_profile.full_name),
+        email = COALESCE(NULLIF(excluded.email, ''), users_profile.email),
+        avatar_url = COALESCE(NULLIF(excluded.avatar_url, ''), users_profile.avatar_url),
         phone = COALESCE(excluded.phone, users_profile.phone),
         xp = COALESCE(excluded.xp, users_profile.xp),
         role = COALESCE(excluded.role, users_profile.role)
     `).bind(userId, name, mail, avatar, userRole, userPhone, userXp).run();
 
+    console.log(`Backend Sync Success for User: ${userId}`);
     const existingUser = await db.prepare('SELECT * FROM users_profile WHERE id = ?').bind(userId).first();
 
     return jsonResponse({
@@ -53,7 +58,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       data: existingUser || { id: userId, full_name: name, email: mail, avatar_url: avatar, role: userRole }
     });
   } catch (e: any) {
-    console.error("Backend Error:", e);
-    return Response.json({ success: false, error: e.message || String(e) }, { status: 500 });
+    console.error("Backend Sync Error:", e);
+    return Response.json({ success: false, error: e?.message || String(e) }, { status: 500 });
   }
 };

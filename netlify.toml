@@ -45,6 +45,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/users/sync"
+  to = "/.netlify/functions/users-sync"
+  status = 200
+
+[[redirects]]
+  from = "/api/users-sync"
+  to = "/.netlify/functions/users-sync"
+  status = 200
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200

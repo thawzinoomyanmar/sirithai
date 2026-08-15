@@ -85,7 +85,7 @@ function mockApiDevPlugin() {
           return;
         }
 
-        if (req.url?.startsWith('/api/users/sync')) {
+        if (req.url?.startsWith('/api/users/sync') || req.url?.startsWith('/api/users-sync')) {
           if (req.method === 'OPTIONS') {
             res.statusCode = 204;
             res.end();
@@ -97,6 +97,7 @@ function mockApiDevPlugin() {
             res.setHeader('Content-Type', 'application/json');
             try {
               const body = JSON.parse(bodyStr || '{}');
+              console.log("Backend received body:", body);
               const id = body.id ? String(body.id).trim().replace(/'/g, "''") : '';
               const fullName = (body.fullName || body.full_name) ? String(body.fullName || body.full_name).replace(/'/g, "''") : 'Anonymous Student';
               const email = body.email ? String(body.email).replace(/'/g, "''") : '';
@@ -575,6 +576,7 @@ export default defineConfig(() => {
             if (path.startsWith('/api/admin/update-status')) return '/admin-update-status';
             if (path.startsWith('/api/admin/approve-payment')) return '/admin-approve-payment';
             if (path.startsWith('/api/webhooks/clerk') || path.startsWith('/api/webhook/clerk')) return '/webhooks-clerk';
+            if (path.startsWith('/api/users/sync') || path.startsWith('/api/users-sync')) return '/users-sync';
             return path.replace(/^\/api/, '');
           },
           configure: (proxy) => {

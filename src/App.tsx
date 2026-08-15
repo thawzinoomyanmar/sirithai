@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, startTransition } from 'react';
-import { useUser, useAuth } from '@clerk/react';
+import { useUser, useAuth, useSession } from '@clerk/react';
 import { useSignUp, useSignIn } from '@clerk/react/legacy';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { lessonsData } from './data/lessonsData';
@@ -699,7 +699,10 @@ export default function App() {
   const location = useLocation();
   const { t, language, setLanguage } = useLanguage();
   const { user, isLoaded: isUserLoaded } = useUser();
+  const { session } = useSession();
   const { signOut, isLoaded: isAuthLoaded } = useAuth();
+
+  const syncedUserIdRef = useRef<string | null>(null);
 
   const [hasLoadedD1Data, setHasLoadedD1Data] = useState(false);
   const hasLoadedD1DataRef = useRef(false);
@@ -721,9 +724,10 @@ export default function App() {
   const [isSyncingD1Users, setIsSyncingD1Users] = useState<boolean>(false);
   const [d1UsersError, setD1UsersError] = useState<string | null>(null);
 
-  const fetchD1Users = useCallback(async (isCancelledRef?: { current: boolean }) => {
-    console.log("[Admin User List] Fetching started...");
-    setIsSyncingD1Users(true);
+  const fetchD1Users = useCallback(async (isQuiet = false, isCancelledRef?: { current: boolean }) => {
+    if (!isQuiet) {
+      setIsSyncingD1Users(true);
+    }
     setD1UsersError(null);
     try {
       const res = await fetch(`/api/admin/users?_t=${Date.now()}`, {
@@ -782,18 +786,14 @@ export default function App() {
         });
 
       if (!isCancelledRef?.current) {
-        console.log("[Admin User List] Live data received from D1:", mappedUsers);
         setRegisteredUsers(mappedUsers);
         try {
           localStorage.setItem('thai_registered_users_list', JSON.stringify(mappedUsers));
         } catch {}
         setD1UsersError(null);
-      } else {
-        console.log("[Admin User List] Data received, but request was cancelled/unmounted; ignoring state update.");
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        console.log("[Admin User List] Fetch request aborted; ignoring.");
         return;
       }
       if (!isCancelledRef?.current) {
@@ -801,19 +801,22 @@ export default function App() {
         setD1UsersError(err?.message || 'Error fetching live user profiles');
       }
     } finally {
-      if (!isCancelledRef?.current) {
+      if (!isQuiet && !isCancelledRef?.current) {
         setIsSyncingD1Users(false);
       }
     }
   }, []);
 
+  // Instant Client-Side Sync when user becomes fully signed in via Clerk
   useEffect(() => {
-    if (isUserLoaded && user && user.id) {
+    if (isUserLoaded && session && user && user.id && syncedUserIdRef.current !== user.id) {
+      syncedUserIdRef.current = user.id; // Prevent infinite loop
+
       const syncUserProfile = async () => {
         const userEmail = user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || '';
         const userFullName = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || userEmail.split('@')[0] || 'Student';
 
-        console.log("Attempting to sync user:", userEmail || user.id);
+        console.log("1. Clerk User Data:", { id: user.id, email: user.primaryEmailAddress?.emailAddress || userEmail });
 
         try {
           const res = await fetch('/api/users/sync', {
@@ -829,21 +832,89 @@ export default function App() {
             })
           });
 
+          console.log("2. Fetch Response Status:", res.status);
+
           if (!res.ok) {
-            const resText = await res.text().catch(() => '');
-            console.error(`[User Sync Error] HTTP ${res.status}: ${resText}`);
-            throw new Error(`HTTP ${res.status}: ${resText}`);
+            const errText = await res.text().catch(() => '');
+            console.error("3. Sync Error Response:", errText);
+            syncedUserIdRef.current = null; // reset so it can retry
+            throw new Error(`HTTP ${res.status}: ${errText}`);
           }
           const syncData = await res.json().catch(() => ({}));
           console.log('[User Sync] Profile successfully synced to D1:', syncData);
-          fetchD1Users();
+          fetchD1Users(true); // Quiet background fetch to refresh list
         } catch (err: any) {
           console.error('[User Sync] Failed to sync profile to D1:', err?.message || err);
+          syncedUserIdRef.current = null;
         }
       };
       syncUserProfile();
     }
-  }, [user, isUserLoaded, fetchD1Users]);
+  }, [user, session, isUserLoaded, fetchD1Users]);
+
+  // Real-time 3-second quiet polling for Admin Directory & focus revalidation
+  useEffect(() => {
+    // Initial quiet fetch
+    fetchD1Users(true);
+
+    // Poll every 3 seconds quietly without triggering loading spinner
+    const intervalId = setInterval(() => {
+      fetchD1Users(true);
+    }, 3000);
+
+    // Revalidate quietly when tab gains focus
+    const handleFocus = () => {
+      fetchD1Users(true);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // Listen for custom user sync events
+    const handleCustomSync = () => {
+      fetchD1Users(true);
+    };
+    window.addEventListener('sirithai_user_synced', handleCustomSync);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('sirithai_user_synced', handleCustomSync);
+    };
+  }, [fetchD1Users]);
+
+  const forceSync = async () => {
+    const samplePayload = {
+      id: user?.id || "test_sync_123",
+      email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || "testsync@gmail.com",
+      full_name: user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || "Test Sync User",
+      fullName: user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || "Test Sync User"
+    };
+
+    console.log("1. Clerk User Data (Force Sync):", samplePayload);
+
+    try {
+      const response = await fetch('/api/users/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(samplePayload)
+      });
+
+      console.log("2. Fetch Response Status:", response.status);
+
+      if (response.ok) {
+        alert("Sync Success!");
+        fetchD1Users(true);
+      } else {
+        const errorText = await response.text();
+        console.error("3. Sync Error Response:", errorText);
+        alert("Sync Error: " + errorText);
+      }
+    } catch (err: any) {
+      console.error("Force Sync Network Error:", err);
+      alert("Sync Error: " + (err?.message || String(err)));
+    }
+  };
 
   useEffect(() => {
     initAutoSync();
@@ -7878,6 +7949,15 @@ startxref
                                   CURRENT REGISTER LIST ({registeredUsers.length} USERS)
                                 </h6>
                                 <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={forceSync}
+                                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-sans font-black uppercase tracking-wider rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                                    title="Manually trigger POST /api/users/sync with test payload"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                    Force Sync Test
+                                  </button>
                                   <button
                                     onClick={() => fetchD1Users()}
                                     disabled={isSyncingD1Users}
