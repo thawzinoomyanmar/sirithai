@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS users_profile (
     email TEXT NOT NULL,
     avatar_url TEXT,
     role TEXT DEFAULT 'student',
+    phone TEXT,
+    xp INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

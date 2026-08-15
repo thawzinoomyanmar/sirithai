@@ -36,11 +36,13 @@ export const handler = async (event: any, context: any) => {
       body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
     }
 
-    const { id, full_name, fullName, email, avatar_url, avatarUrl, role } = body;
+    const { id, full_name, fullName, email, avatar_url, avatarUrl, role, phone, xp } = body;
 
     const userId = id ? String(id).trim() : '';
     const name = full_name || fullName || '';
     const mail = email || '';
+    const userPhone = phone ? String(phone).trim() : null;
+    const userXp = typeof xp === 'number' ? xp : 0;
 
     if (!userId) {
       return {
@@ -54,13 +56,15 @@ export const handler = async (event: any, context: any) => {
 
     // Cloudflare D1 (SQLite) UPSERT into users_profile table
     const sql = `
-      INSERT INTO users_profile (id, full_name, email, avatar_url, role, created_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         full_name = excluded.full_name,
         email = excluded.email,
         avatar_url = excluded.avatar_url,
-        role = COALESCE(users_profile.role, excluded.role)
+        phone = COALESCE(NULLIF(excluded.phone, ''), users_profile.phone),
+        xp = COALESCE(excluded.xp, users_profile.xp),
+        role = COALESCE(excluded.role, users_profile.role)
     `;
 
     await db.prepare(sql).bind(
@@ -68,7 +72,9 @@ export const handler = async (event: any, context: any) => {
       name || mail.split('@')[0] || 'Student',
       mail,
       avatar_url || avatarUrl || '',
-      assignedRole
+      assignedRole,
+      userPhone,
+      userXp
     ).run();
 
     return {

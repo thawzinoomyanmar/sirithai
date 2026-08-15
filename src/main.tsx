@@ -12,25 +12,27 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || import.met
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isLoaded } = useAuth();
   const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [forceContinue, setForceContinue] = useState(false);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     if (!isLoaded) {
       timeoutId = setTimeout(() => {
         setHasTimedOut(true);
-      }, 10000);
+      }, 5000);
     }
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [isLoaded]);
   
-  if (!isLoaded) {
+  if (!isLoaded && !forceContinue) {
     return (
       <SplashScreen
         message="Authenticating & preparing your Thai course material..."
         hasTimedOut={hasTimedOut}
         onRetry={() => window.location.reload()}
+        onContinue={() => setForceContinue(true)}
       />
     );
   }

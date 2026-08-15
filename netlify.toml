@@ -25,8 +25,23 @@
   status = 200
 
 [[redirects]]
-  from = "/api/user-courses"
-  to = "/.netlify/functions/user-courses"
+  from = "/api/admin/users"
+  to = "/.netlify/functions/admin-users"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin/transactions"
+  to = "/.netlify/functions/admin-transactions"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin/update-status"
+  to = "/.netlify/functions/admin-update-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin/delete-user"
+  to = "/.netlify/functions/admin-delete-user"
   status = 200
 
 [[redirects]]

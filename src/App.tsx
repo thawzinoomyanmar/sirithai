@@ -51,6 +51,7 @@ import {
   ChevronDown,
   ChevronUp,
   User, 
+  UserPlus,
   Star,
   Check,
   Lock,
@@ -114,6 +115,49 @@ const adjustHexBrightness = (hex: string, percent: number): string => {
 
 
 
+
+const DEFAULT_REGISTERED_USERS: RegisteredUser[] = [
+  {
+    username: "ko_nay_min",
+    password: "password123",
+    role: "student",
+    xp: 1250,
+    dateJoined: "2026-05-12",
+    fullName: "Ko Nay Min",
+    phone: "09-771234567",
+    email: "naymin@gmail.com"
+  },
+  {
+    username: "ma_khine",
+    password: "password123",
+    role: "student",
+    xp: 840,
+    dateJoined: "2026-05-20",
+    fullName: "Ma Khine",
+    phone: "09-445890123",
+    email: "makhineoo@viber-me.com"
+  },
+  {
+    username: "phyo_wai",
+    password: "password123",
+    role: "student",
+    xp: 950,
+    dateJoined: "2026-06-01",
+    fullName: "Phyo Wai",
+    phone: "09-987654321",
+    email: "phyowai@gmail.com"
+  },
+  {
+    username: "admin",
+    password: "adminpassword",
+    role: "admin",
+    xp: 5000,
+    dateJoined: "2026-01-01",
+    fullName: "System Admin",
+    phone: "09-111222333",
+    email: "admin@sirithai.com"
+  }
+];
 
 const DEFAULT_STORE_ITEMS: StoreItem[] = [
   {
@@ -362,6 +406,8 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
 function CustomSignUp() {
   const { signUp, isLoaded: isSignUpLoaded, setActive } = useSignUp();
   const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
+  const [fullNameInput, setFullNameInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -387,11 +433,20 @@ function CustomSignUp() {
     setErrorMsg("");
     setIsLoading(true);
     const cleanEmail = emailAddress.trim().toLowerCase();
+    const userName = fullNameInput.trim() || cleanEmail.split('@')[0] || 'Student';
+    const userPhone = phoneInput.trim() || undefined;
 
     if (isSignUpLoaded && signUp) {
       try {
         const result = await signUp.create({ emailAddress: cleanEmail, password });
         if (result.status === 'complete' && result.createdSessionId) {
+          const userId = (result as any).createdUserId || `user_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          await fetch('/api/users/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId, fullName: userName, email: cleanEmail, phone: userPhone, role: 'student', xp: 0 })
+          }).catch(err => console.error('[User Sync Error]:', err));
+
           await setActive({ session: result.createdSessionId });
           window.location.href = '/';
           return;
@@ -407,18 +462,29 @@ function CustomSignUp() {
     }
 
     if (cleanEmail && password.length >= 4) {
-      const userName = cleanEmail.split('@')[0] || 'Student';
       const userId = `user_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
       localStorage.setItem('thai_user_logged_in', 'true');
       localStorage.setItem('thai_current_user', userName);
       localStorage.setItem('thai_current_user_email', cleanEmail);
 
-      console.log("Attempting to sync user:", cleanEmail);
-      await fetch('/api/users/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: userId, fullName: userName, email: cleanEmail, role: 'student' })
-      }).catch(err => console.error('[User Sync Error]:', err));
+      console.log("Attempting to sync user profile data to D1:", userName, cleanEmail);
+      try {
+        const res = await fetch('/api/users/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: userId, fullName: userName, email: cleanEmail, phone: userPhone, role: 'student', xp: 0 })
+        });
+        if (res.ok) {
+          const syncRes = await res.json().catch(() => ({}));
+          console.log("✅ User profile saved to D1 successfully:", syncRes);
+          window.dispatchEvent(new CustomEvent('sirithai_user_synced'));
+        } else {
+          const errText = await res.text().catch(() => '');
+          console.warn("User sync response note:", res.status, errText);
+        }
+      } catch (err) {
+        console.error('[User Sync Network Error]:', err);
+      }
 
       window.location.href = '/';
     } else {
@@ -447,24 +513,46 @@ function CustomSignUp() {
         <img src="/icon-192.png" alt="Siri Thai Logo" className="w-16 h-16 rounded-2xl shadow-md mb-3 object-cover" />
         <h2 className="text-2xl font-black font-sans text-brand-dark text-center tracking-tight">Create Account</h2>
       </div>
-      <form onSubmit={handleSubmit} className="space-y-4 text-left">
+      <form onSubmit={handleSubmit} className="space-y-3.5 text-left">
         <div>
-          <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1.5">Email Address</label>
+          <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1">Full Name</label>
+          <input 
+            type="text" 
+            value={fullNameInput} 
+            onChange={(e) => setFullNameInput(e.target.value)} 
+            placeholder="e.g. Mg Mg or Aung Aung"
+            className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 outline-none transition-all font-sans text-sm" 
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1">Phone Number (Optional)</label>
+          <input 
+            type="tel" 
+            value={phoneInput} 
+            onChange={(e) => setPhoneInput(e.target.value)} 
+            placeholder="e.g. 09-771234567"
+            className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 outline-none transition-all font-sans text-sm" 
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1">Email Address</label>
           <input 
             type="email" 
             value={emailAddress} 
             onChange={(e) => setEmailAddress(e.target.value)} 
-            className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 outline-none transition-all font-sans text-sm" 
+            placeholder="name@example.com"
+            className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 outline-none transition-all font-sans text-sm" 
             required 
           />
         </div>
         <div>
-          <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1.5">Password</label>
+          <label className="block text-[10px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1">Password</label>
           <input 
             type="password" 
             value={password} 
             onChange={(e) => setPassword(e.target.value)} 
-            className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 outline-none transition-all font-sans text-sm" 
+            placeholder="••••••••"
+            className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 outline-none transition-all font-sans text-sm" 
             required 
           />
         </div>
@@ -619,6 +707,106 @@ export default function App() {
     hasLoadedD1DataRef.current = hasLoadedD1Data;
   }, [hasLoadedD1Data]);
 
+  // Registered user profiles fetched live from D1 users_profile table
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>(() => {
+    try {
+      const saved = localStorage.getItem('thai_registered_users_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [isSyncingD1Users, setIsSyncingD1Users] = useState<boolean>(false);
+  const [d1UsersError, setD1UsersError] = useState<string | null>(null);
+
+  const fetchD1Users = useCallback(async (isCancelledRef?: { current: boolean }) => {
+    console.log("[Admin User List] Fetching started...");
+    setIsSyncingD1Users(true);
+    setD1UsersError(null);
+    try {
+      const res = await fetch(`/api/admin/users?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+      const contentType = res.headers.get('content-type') || '';
+
+      if (!res.ok || !contentType.includes('application/json')) {
+        let errMsg = `HTTP Error ${res.status}: ${res.statusText || 'Server Error'}`;
+        if (contentType.includes('text/html')) {
+          errMsg = `Backend returned HTML fallback instead of JSON (${res.status}). Check server routing and proxy.`;
+        } else {
+          try {
+            const txt = await res.text();
+            if (txt) errMsg = txt;
+          } catch {}
+        }
+        throw new Error(errMsg);
+      }
+
+      const fetchedResult: any = await res.json();
+      if (fetchedResult.success === false) {
+        throw new Error(fetchedResult.error || 'Failed to fetch user profiles from database');
+      }
+
+      const rawUsersList = Array.isArray(fetchedResult?.data) 
+        ? fetchedResult.data 
+        : (Array.isArray(fetchedResult) ? fetchedResult : []);
+      
+      const mappedUsers = rawUsersList
+        .filter((u: any) => u && typeof u === 'object')
+        .map((u: any) => {
+          const rawDate = u?.created_at || u?.dateJoined;
+          let dateJoined = 'N/A';
+          if (rawDate) {
+            try {
+              dateJoined = String(rawDate).split(' ')[0].split('T')[0];
+            } catch (e) {
+              dateJoined = String(rawDate);
+            }
+          }
+          return {
+            username: String(u?.id || u?.username || u?.email || 'user_unknown'),
+            password: '— (Clerk Auth)',
+            role: u?.role === 'admin' ? 'admin' : 'student',
+            xp: Number(u?.xp || 0),
+            dateJoined,
+            fullName: String(u?.full_name || u?.fullName || u?.id || u?.username || 'Student'),
+            phone: u?.phone ? String(u.phone) : '',
+            email: String(u?.email || '')
+          };
+        });
+
+      if (!isCancelledRef?.current) {
+        console.log("[Admin User List] Live data received from D1:", mappedUsers);
+        setRegisteredUsers(mappedUsers);
+        try {
+          localStorage.setItem('thai_registered_users_list', JSON.stringify(mappedUsers));
+        } catch {}
+        setD1UsersError(null);
+      } else {
+        console.log("[Admin User List] Data received, but request was cancelled/unmounted; ignoring state update.");
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log("[Admin User List] Fetch request aborted; ignoring.");
+        return;
+      }
+      if (!isCancelledRef?.current) {
+        console.error("[Admin User List] Failed to fetch D1 users:", err);
+        setD1UsersError(err?.message || 'Error fetching live user profiles');
+      }
+    } finally {
+      if (!isCancelledRef?.current) {
+        setIsSyncingD1Users(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (isUserLoaded && user && user.id) {
       const syncUserProfile = async () => {
@@ -648,13 +836,14 @@ export default function App() {
           }
           const syncData = await res.json().catch(() => ({}));
           console.log('[User Sync] Profile successfully synced to D1:', syncData);
+          fetchD1Users();
         } catch (err: any) {
           console.error('[User Sync] Failed to sync profile to D1:', err?.message || err);
         }
       };
       syncUserProfile();
     }
-  }, [user, isUserLoaded]);
+  }, [user, isUserLoaded, fetchD1Users]);
 
   useEffect(() => {
     initAutoSync();
@@ -1876,40 +2065,43 @@ export default function App() {
   // Simple Notification banner dismiss
   const [showBroadcastBanner, setShowBroadcastBanner] = useState<boolean>(true);
 
-  // User list table for admin dashboard view
-  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
+  // Lifecycle log on every state update / re-render
+  useEffect(() => {
+    console.log("[Admin User List] Component re-rendered, current state count:", registeredUsers.length, registeredUsers);
+  }, [registeredUsers]);
 
   useEffect(() => {
-    const fetchD1Users = async () => {
-      try {
-        const res = await fetch('/api/users');
-        if (res.ok) {
-          const data: any = await res.json();
-          if (data.success && data.data) {
-            const mappedUsers = data.data.map((u: any) => ({
-              username: u.id,
-              password: '— (Clerk Auth)',
-              role: u.role || 'student',
-              xp: 0,
-              dateJoined: u.created_at ? u.created_at.split(' ')[0] : new Date().toISOString().split('T')[0],
-              fullName: u.full_name || 'Student',
-              email: u.email || ''
-            }));
-            setRegisteredUsers(mappedUsers);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch D1 users:", err);
+    const isCancelledRef = { current: false };
+    fetchD1Users(isCancelledRef);
+
+    // Real-time polling every 2.5 seconds for live sign-up & profile updates in Admin Dashboard
+    const pollInterval = setInterval(() => {
+      if (!isCancelledRef.current) {
+        fetchD1Users(isCancelledRef);
+      }
+    }, 2500);
+
+    // Custom event listener for instant update on user sign-up / profile sync
+    const handleUserSynced = () => {
+      if (!isCancelledRef.current) {
+        console.log("[Admin Real-Time] Live profile sync event detected, refreshing D1 user list...");
+        fetchD1Users(isCancelledRef);
       }
     };
-    fetchD1Users();
-  }, []);
+    window.addEventListener('sirithai_user_synced', handleUserSynced);
+
+    return () => {
+      isCancelledRef.current = true;
+      clearInterval(pollInterval);
+      window.removeEventListener('sirithai_user_synced', handleUserSynced);
+    };
+  }, [fetchD1Users, adminHubTab]);
 
   // Global Sync Trigger for User Profile to D1
   useEffect(() => {
     if (currentUser) {
-      const userProfile = registeredUsers.find(u => u.username.toLowerCase() === currentUser.toLowerCase());
-      if (userProfile) {
+      const userProfile = registeredUsers.find(u => (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase());
+      if (userProfile && userProfile.username) {
         fetch('/api/users/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2026,17 +2218,16 @@ export default function App() {
     }
   }, [adminSelectedStoreId, storeItems, storeIsNew]);
 
-  // Load student account profile parameters into checkout form automatically when currentUser changes
   useEffect(() => {
     if (isLoggedIn && currentUser && !isAdmin) {
-      const parentUser = registeredUsers.find(u => u.username.toLowerCase() === currentUser.toLowerCase());
+      const parentUser = registeredUsers.find(u => (u?.username || '').toLowerCase() === currentUser.toLowerCase());
       if (parentUser) {
         setCheckoutName(parentUser.fullName || parentUser.username || '');
         setGatewayPhone(parentUser.phone || '');
         setGatewayEmail(parentUser.email || '');
       }
     }
-  }, [currentUser, isLoggedIn, isAdmin]);
+  }, [currentUser, isLoggedIn, isAdmin, registeredUsers]);
 
   const [selectedDetailOrder, setSelectedDetailOrder] = useState<PurchaseOrder | null>(null);
 
@@ -2053,24 +2244,39 @@ export default function App() {
   const [newOrderEmail, setNewOrderEmail] = useState<string>('');
   const [newOrderNotes, setNewOrderNotes] = useState<string>('');
 
-  const fetchOrdersFromD1 = async () => {
+  const fetchOrdersFromD1 = useCallback(async () => {
     setIsSyncingD1Orders(true);
     try {
-      const isAdmin = localStorage.getItem('thai_user_is_admin') === 'true';
-      const endpoint = (!isAdmin && user?.id) ? `/api/orders?userId=${user.id}` : '/api/orders';
+      const isAdminUser = localStorage.getItem('thai_user_is_admin') === 'true' || isAdmin;
+      const endpoint = isAdminUser ? '/api/admin/transactions' : ((user?.id) ? `/api/orders?userId=${user.id}` : '/api/orders');
       const res = await fetch(endpoint);
       if (res.ok) {
         const data: any = await res.json();
-        if (data.success && Array.isArray(data.orders) && data.orders.length > 0) {
-          setOrders(data.orders);
+        const rawList = data.data || data.orders || [];
+        if (Array.isArray(rawList)) {
+          const mapped: PurchaseOrder[] = rawList.map((t: any) => ({
+            id: t.id,
+            username: t.student_full_name || t.user_id || t.username || 'Student',
+            itemName: t.course_name || t.item_name || t.itemName || 'Thai Language Course',
+            itemType: t.item_type || t.itemType || 'course',
+            priceAmount: Number(t.amount || t.price_amount || t.priceAmount || 0),
+            currency: t.currency || 'MMK',
+            status: t.status || 'pending',
+            orderDate: t.created_at ? String(t.created_at).split(' ')[0].split('T')[0] : (t.orderDate || new Date().toISOString().split('T')[0]),
+            studentPhone: t.student_phone || t.studentPhone || '',
+            studentEmail: t.student_profile_email || t.student_email || t.studentEmail || '',
+            evidenceImage: t.slip_image || t.evidenceImage || t.transaction_proof_url || '',
+            adminNotes: t.admin_notes || t.adminNotes || ''
+          }));
+          setOrders(mapped);
         }
       }
     } catch (err) {
-      console.warn('[D1 Orders Sync Note]', err);
+      console.warn('[D1 Transactions/Orders Sync Note]', err);
     } finally {
       setIsSyncingD1Orders(false);
     }
-  };
+  }, [isAdmin, user?.id]);
 
   useEffect(() => {
     fetchOrdersFromD1();
@@ -2136,15 +2342,16 @@ export default function App() {
       const res = await fetch('/api/admin/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ id: orderId, status: 'approved' })
+        body: JSON.stringify({ transactionId: orderId, id: orderId, status: 'approved' })
       });
       if (!res.ok) throw new Error('API failed');
+      fetchOrdersFromD1();
     } catch (err) {
       console.warn("Approve order D1 error, rolling back:", err);
       setOrders(previousOrders);
       alert('Failed to approve on server. Change rolled back.');
     }
-  }, [orders]);
+  }, [orders, fetchOrdersFromD1]);
 
   const handleStudyInteractive = useCallback((res: any) => {
     setActiveReadingResource(res);
@@ -2187,15 +2394,16 @@ export default function App() {
       const res = await fetch('/api/admin/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ id: orderId, status: 'rejected' })
+        body: JSON.stringify({ transactionId: orderId, id: orderId, status: 'rejected' })
       });
       if (!res.ok) throw new Error('API failed');
+      fetchOrdersFromD1();
     } catch (err) {
       console.warn("Reject order D1 error, rolling back:", err);
       setOrders(previousOrders);
       alert('Failed to reject on server. Change rolled back.');
     }
-  }, [orders]);
+  }, [orders, fetchOrdersFromD1]);
 
   const handleDeleteOrder = async (orderId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -2372,7 +2580,7 @@ startxref
       // Sync XP dynamically in the user list
       setRegisteredUsers((prev) => {
         const nextList = prev.map((u) => 
-          u.username.toLowerCase() === currentUser.toLowerCase() 
+          (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase() 
             ? { ...u, xp: newState.totalXp } 
             : u
         );
@@ -6547,7 +6755,7 @@ startxref
                                   const val = e.target.value;
                                   setCheckoutName(val);
                                   setRegisteredUsers(prev => {
-                                    const updated = prev.map(u => u.username.toLowerCase() === currentUser.toLowerCase() ? { ...u, fullName: val } : u);
+                                    const updated = prev.map(u => (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase() ? { ...u, fullName: val } : u);
                                     localStorage.setItem('thai_registered_users_list', JSON.stringify(updated));
                                     return updated;
                                   });
@@ -6566,7 +6774,7 @@ startxref
                                   const val = e.target.value;
                                   setGatewayPhone(val);
                                   setRegisteredUsers(prev => {
-                                    const updated = prev.map(u => u.username.toLowerCase() === currentUser.toLowerCase() ? { ...u, phone: val } : u);
+                                    const updated = prev.map(u => (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase() ? { ...u, phone: val } : u);
                                     localStorage.setItem('thai_registered_users_list', JSON.stringify(updated));
                                     return updated;
                                   });
@@ -6585,7 +6793,7 @@ startxref
                                   const val = e.target.value;
                                   setGatewayEmail(val);
                                   setRegisteredUsers(prev => {
-                                    const updated = prev.map(u => u.username.toLowerCase() === currentUser.toLowerCase() ? { ...u, email: val } : u);
+                                    const updated = prev.map(u => (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase() ? { ...u, email: val } : u);
                                     localStorage.setItem('thai_registered_users_list', JSON.stringify(updated));
                                     return updated;
                                   });
@@ -7144,13 +7352,13 @@ startxref
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-gray-100">
                     <h4 className="font-sans font-black text-brand-dark text-sm uppercase tracking-wide flex items-center gap-1.5">
                       <ShoppingBag className="w-4 h-4 text-brand-purple shrink-0" />
-                      📜 Personal Purchase Ledger & Order Compliance ({currentUser ? orders.filter(o => o.username.toLowerCase() === currentUser.toLowerCase()).length : 0})
+                      📜 Personal Purchase Ledger & Order Compliance ({currentUser ? orders.filter(o => (o?.username || '').toLowerCase() === (currentUser || '').toLowerCase()).length : 0})
                     </h4>
-                    {isLoggedIn && orders.filter(o => o.username.toLowerCase() === (currentUser || '').toLowerCase()).length > 0 && (
+                    {isLoggedIn && orders.filter(o => (o?.username || '').toLowerCase() === (currentUser || '').toLowerCase()).length > 0 && (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => downloadOrdersAsJSON(orders.filter(o => o.username.toLowerCase() === (currentUser || '').toLowerCase()))}
+                          onClick={() => downloadOrdersAsJSON(orders.filter(o => (o?.username || '').toLowerCase() === (currentUser || '').toLowerCase()))}
                           className="px-2.5 py-1.5 bg-gray-50 text-brand-dark hover:bg-brand-purple/5 border border-gray-200 hover:border-brand-purple rounded-xl text-[10px] sm:text-[10.5px] font-sans font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shrink-0"
                           title="Download my purchase history as structured JSON"
                         >
@@ -7159,7 +7367,7 @@ startxref
                         </button>
                         <button
                           type="button"
-                          onClick={() => downloadOrdersAsCSV(orders.filter(o => o.username.toLowerCase() === (currentUser || '').toLowerCase()))}
+                          onClick={() => downloadOrdersAsCSV(orders.filter(o => (o?.username || '').toLowerCase() === (currentUser || '').toLowerCase()))}
                           className="px-2.5 py-1.5 bg-gray-50 text-brand-dark hover:bg-brand-purple/5 border border-gray-200 hover:border-brand-purple rounded-xl text-[10px] sm:text-[10.5px] font-sans font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shrink-0"
                           title="Download my purchase history as a CSV spreadsheet"
                         >
@@ -7187,7 +7395,7 @@ startxref
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                          {orders.filter(o => o.username.toLowerCase() === currentUser.toLowerCase()).length === 0 ? (
+                          {orders.filter(o => (o?.username || '').toLowerCase() === (currentUser || '').toLowerCase()).length === 0 ? (
                             <tr>
                               <td colSpan={5} className="py-8 text-center text-brand-muted font-bold">
                                 No previous orders exist on your student account. Click "Purchase Order" above to purchase!
@@ -7195,7 +7403,7 @@ startxref
                             </tr>
                           ) : (
                             orders
-                              .filter(o => o.username.toLowerCase() === currentUser.toLowerCase())
+                              .filter(o => (o?.username || '').toLowerCase() === (currentUser || '').toLowerCase())
                               .map((ord) => (
                                 <tr 
                                   key={ord.id} 
@@ -7571,51 +7779,60 @@ startxref
                               e.preventDefault();
                               const cleanUser = adminNewUserUsername.trim();
                               const cleanPassword = adminNewUserPassword.trim();
-                              if (!cleanUser || !cleanPassword) {
-                                alert("Username and password are required.");
+                              if (!cleanUser) {
+                                alert("Username/ID is required.");
                                 return;
                               }
-                              const alreadyHas = registeredUsers.some(u => u.username.toLowerCase() === cleanUser.toLowerCase()) || cleanUser.toLowerCase() === 'admin';
+                              const alreadyHas = registeredUsers.some(u => (u?.username || '').toLowerCase() === cleanUser.toLowerCase());
                               if (alreadyHas) {
-                                alert("This username is already taken!");
+                                alert("This User ID already exists in users_profile!");
                                 return;
                               }
 
+                              // Optimistic UI update: instantly render new user in state
+                              const newUserObj: RegisteredUser = {
+                                username: cleanUser,
+                                password: '— (Clerk Auth)',
+                                role: adminNewUserRole === 'admin' ? 'admin' : 'student',
+                                xp: 0,
+                                dateJoined: new Date().toISOString().split('T')[0],
+                                fullName: cleanUser,
+                                phone: '',
+                                email: `${cleanUser}@classroom.edu`
+                              };
+                              setRegisteredUsers(prev => [newUserObj, ...prev.filter(u => u.username !== cleanUser)]);
+
                               try {
-                                await fetch('/api/users/sync', {
+                                const res = await fetch('/api/users/sync', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
                                     id: cleanUser,
-                                    fullName: cleanUser,
-                                    email: `${cleanUser}@local.test`,
-                                    avatarUrl: '',
+                                    full_name: cleanUser,
+                                    email: `${cleanUser}@classroom.edu`,
+                                    avatar_url: '',
                                     role: adminNewUserRole
                                   })
                                 });
-                              } catch(err) {
-                                console.error("Failed to sync new user to D1", err);
+                                if (res.ok) {
+                                  addSystemLog('admin', `Created new ${adminNewUserRole.toUpperCase()} profile for "${cleanUser}" in users_profile`);
+                                  setAdminNewUserUsername('');
+                                  setAdminNewUserPassword('');
+                                  window.dispatchEvent(new CustomEvent('sirithai_user_synced'));
+                                  await fetchD1Users();
+                                } else {
+                                  const errData: any = await res.json().catch(() => ({}));
+                                  alert(`Failed to save account to D1: ${errData.error || 'Server Error'}`);
+                                }
+                              } catch(err: any) {
+                                console.error("Failed to sync new user to D1 users_profile", err);
                               }
-
-                              const newUser: RegisteredUser = {
-                                username: cleanUser,
-                                password: cleanPassword,
-                                role: adminNewUserRole,
-                                xp: adminNewUserRole === 'student' ? 0 : 5000,
-                                dateJoined: new Date().toISOString().split('T')[0]
-                              };
-                              const updated = [...registeredUsers, newUser];
-                              setRegisteredUsers(updated);
-                              addSystemLog('admin', `Created a new ${adminNewUserRole.toUpperCase()} account for "${cleanUser}"`);
-                              setAdminNewUserUsername('');
-                              setAdminNewUserPassword('');
-                              alert(`Account successfully created!\nUsername: ${cleanUser}\nRole: ${adminNewUserRole.toUpperCase()}`);
                             }} className="space-y-3 pt-1 text-left">
                               <div>
-                                <label className="block text-[9px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1">Username</label>
+                                <label className="block text-[9px] font-sans font-black text-brand-dark uppercase tracking-wider mb-1">User ID / Email Prefix</label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. ko_phyo"
+                                  placeholder="e.g. ko_phyo or user_123"
                                   value={adminNewUserUsername}
                                   onChange={(e) => setAdminNewUserUsername(e.target.value)}
                                   className="w-full px-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-xs font-bold font-sans text-brand-dark focus:border-brand-purple focus:outline-none transition-all"
@@ -7630,7 +7847,6 @@ startxref
                                   value={adminNewUserPassword}
                                   onChange={(e) => setAdminNewUserPassword(e.target.value)}
                                   className="w-full px-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-xs font-semibold font-sans text-brand-dark focus:border-brand-purple focus:outline-none transition-all"
-                                  required
                                 />
                               </div>
                               <div>
@@ -7649,7 +7865,7 @@ startxref
                                 className="w-full py-3 bg-brand-purple hover:bg-brand-purple/95 text-white rounded-xl border-b-4 border-brand-purple-shadow text-[11px] font-sans font-black hover:brightness-105 active:translate-y-0.5 cursor-pointer uppercase tracking-wider transition-all pt-3 flex items-center justify-center gap-1.5"
                               >
                                 <Plus className="w-3.5 h-3.5" />
-                                Add Account Securely
+                                Add Profile To D1 users_profile
                               </button>
                             </form>
                           </div>
@@ -7659,75 +7875,156 @@ startxref
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <h6 className="text-[11px] font-sans font-black text-brand-dark uppercase tracking-wider">
-                                  Current Register List ({registeredUsers.length} Users)
+                                  CURRENT REGISTER LIST ({registeredUsers.length} USERS)
                                 </h6>
-                                <button
-                                  onClick={() => {
-                                    const confirmReset = window.confirm("Are you sure you want to reset user table? (Will reset to standard entries)");
-                                    if (confirmReset) {
-                                      const initialUsers: RegisteredUser[] = [
-                                        { username: "ko_nay_min", password: "password123", role: "student", xp: 1250, dateJoined: "2026-05-12", fullName: "Ko Nay Min", phone: "09-771234567", email: "naymin@gmail.com" },
-                                        { username: "ma_khine", password: "password123", role: "student", xp: 820, dateJoined: "2026-06-01", fullName: "Ma Khine Oo", phone: "09-445890123", email: "makhineoo@viber-me.com" },
-                                        { username: "phyo_wai", password: "password123", role: "student", xp: 450, dateJoined: "2026-06-10", fullName: "Phyo Wai Tun", phone: "09-221345566", email: "phyowai@gmail.com" },
-                                        { username: "admin_thura", password: "adminpassword", role: "admin", xp: 5000, dateJoined: "2026-06-05" }
-                                      ];
-                                      setRegisteredUsers(initialUsers);
-                                      localStorage.setItem('thai_registered_users_list', JSON.stringify(initialUsers));
-                                      addSystemLog('admin', 'Reset student user directory catalog to factory seed');
-                                    }
-                                  }}
-                                  className="text-[9.5px] font-sans font-black text-brand-purple hover:underline flex items-center gap-1 cursor-pointer select-none"
-                                >
-                                  <RefreshCw className="w-3 text-brand-purple" />
-                                  RESET TO DEFAULT USERS
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => fetchD1Users()}
+                                    disabled={isSyncingD1Users}
+                                    className="text-[9.5px] font-sans font-black text-brand-purple hover:underline flex items-center gap-1 cursor-pointer select-none"
+                                  >
+                                    <RefreshCw className={`w-3 text-brand-purple ${isSyncingD1Users ? 'animate-spin' : ''}`} />
+                                    {isSyncingD1Users ? 'SYNCING D1...' : 'REFRESH LIVE D1 USERS'}
+                                  </button>
+                                </div>
                               </div>
 
-                              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 bg-gray-50/30 p-2 border border-gray-100 rounded-xl">
-                                {registeredUsers.map((usr, i) => (
-                                  <div key={i} className="bg-white p-3 rounded-xl border border-gray-110 flex items-center justify-between gap-3 shadow-3xs hover:border-gray-205 transition-all text-left">
-                                    <div className="space-y-1">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="font-sans font-black text-brand-dark text-xs">{usr.username}</span>
-                                        {usr.role === 'admin' ? (
-                                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200 select-none">
-                                            <Shield className="w-2 h-2" /> Admin
-                                          </span>
-                                        ) : (
-                                          <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-green-50 text-green-700 border border-green-200 select-none">
-                                            Student
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[10px] text-brand-muted font-sans space-y-0.5 font-semibold">
-                                        <p>Password: <code className="bg-gray-50 text-brand-dark px-1 py-0.5 rounded font-mono font-bold text-brand-dark">{usr.password || 'password123'}</code></p>
-                                        {usr.fullName && <p>Full Name: <span className="text-brand-dark font-extrabold">{usr.fullName}</span></p>}
-                                        {usr.phone && <p>Phone: <span className="text-brand-dark font-mono font-bold">{usr.phone}</span></p>}
-                                        {usr.email && <p>Email: <span className="text-slate-600 font-medium">{usr.email}</span></p>}
-                                        <p>Progress: <span className="text-brand-purple font-black font-mono">{usr.role === 'admin' ? '—' : `${usr.xp} XP (LVL ${Math.floor(usr.xp / 1000) + 1})`}</span></p>
-                                        <p>Joined: <span className="text-gray-500 font-mono font-bold">{usr.dateJoined}</span></p>
-                                      </div>
-                                    </div>
+                              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 bg-gray-50/30 p-2 border border-gray-100 rounded-xl">
+                                {(() => {
+                                  const users = Array.isArray(registeredUsers) ? registeredUsers : [];
+                                  console.log("Component rendering. Users state:", users);
 
-                                    <button
-                                      onClick={() => {
-                                        const confirmed = window.confirm(`Are you sure you want to delete the user account "${usr.username}"? This cannot be undone.`);
-                                        if (confirmed) {
-                                          setRegisteredUsers((prev) => {
-                                            const updated = prev.filter(u => u.username !== usr.username);
-                                            localStorage.setItem('thai_registered_users_list', JSON.stringify(updated));
-                                            return updated;
-                                          });
-                                          addSystemLog('admin', `Deregistered account of "${usr.username}"`);
-                                        }
-                                      }}
-                                      className="p-2.5 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-xl cursor-pointer transition-all border border-transparent hover:border-red-100 flex items-center justify-center shrink-0"
-                                      title="Delete Account"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                ))}
+                                  if (isSyncingD1Users && users.length === 0) {
+                                    return (
+                                      <div className="p-8 text-center space-y-3">
+                                        <RefreshCw className="w-6 h-6 text-brand-purple animate-spin mx-auto" />
+                                        <p className="text-xs font-sans font-bold text-brand-muted">Fetching live user profiles from Cloudflare D1 database...</p>
+                                      </div>
+                                    );
+                                  }
+
+                                  if (d1UsersError) {
+                                    return (
+                                      <div className="p-8 text-center space-y-3 bg-red-50/50 rounded-xl border border-red-100 p-4">
+                                        <p className="text-xs font-sans font-bold text-red-600">
+                                          Error fetching data: {d1UsersError}
+                                        </p>
+                                        <button
+                                          onClick={() => fetchD1Users()}
+                                          className="px-4 py-2 bg-brand-purple text-white font-bold text-xs rounded-xl shadow-sm hover:bg-brand-purple-dark transition-all cursor-pointer inline-flex items-center gap-1.5"
+                                        >
+                                          <RefreshCw className="w-3.5 h-3.5" />
+                                          Retry Fetching Users
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  if (users.length === 0) {
+                                    return (
+                                      <div className="p-8 text-center space-y-3">
+                                        <p className="text-xs text-brand-muted font-bold">
+                                          No user profiles currently registered in D1 users_profile table.
+                                        </p>
+                                        <button
+                                          onClick={() => fetchD1Users()}
+                                          className="px-4 py-2 bg-brand-purple text-white font-bold text-xs rounded-xl shadow-sm hover:bg-brand-purple-dark transition-all cursor-pointer inline-flex items-center gap-1.5"
+                                        >
+                                          <RefreshCw className="w-3.5 h-3.5" />
+                                          Refresh Database Rows
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  return users.map((usr: any, i: number) => {
+                                    const username = usr?.username || usr?.id || `user_${i}`;
+                                    const fullName = usr?.fullName || usr?.full_name || usr?.username || usr?.id || 'Student';
+                                    const role = usr?.role === 'admin' ? 'admin' : 'student';
+                                    const rawDate = usr?.dateJoined || usr?.created_at;
+                                    let dateJoined = 'N/A';
+                                    if (rawDate) {
+                                      try {
+                                        dateJoined = String(rawDate).split(' ')[0].split('T')[0];
+                                      } catch (e) {
+                                        dateJoined = String(rawDate);
+                                      }
+                                    }
+                                    const email = usr?.email || '';
+                                    const phone = usr?.phone || '';
+                                    const xp = Number(usr?.xp || 0);
+                                    const avatarUrl = usr?.avatar_url || usr?.avatarUrl || '';
+                                    const initials = (fullName || 'S').slice(0, 2).toUpperCase();
+
+                                    return (
+                                      <div key={username} className="bg-white p-3.5 rounded-xl border border-gray-110 flex items-center justify-between gap-3 shadow-3xs hover:border-brand-purple/30 transition-all text-left">
+                                        <div className="flex items-start gap-3">
+                                          {/* User Profile Avatar / Initial Badge */}
+                                          {avatarUrl ? (
+                                            <img src={avatarUrl} alt={fullName} className="w-10 h-10 rounded-full object-cover border border-gray-200 shrink-0 shadow-2xs" />
+                                          ) : (
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-purple to-purple-800 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
+                                              {initials}
+                                            </div>
+                                          )}
+
+                                          <div className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="font-sans font-black text-brand-dark text-xs">{fullName}</span>
+                                              {role === 'admin' ? (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200 select-none">
+                                                  <Shield className="w-2 h-2" /> ADMIN
+                                                </span>
+                                              ) : (
+                                                <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-green-50 text-green-700 border border-green-200 select-none">
+                                                  STUDENT
+                                                </span>
+                                              )}
+                                              {xp > 0 && (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black bg-purple-50 text-brand-purple border border-purple-200">
+                                                  ⚡ {xp} XP
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="text-[10px] text-brand-muted font-sans space-y-0.5 font-semibold">
+                                              <p>User ID: <code className="bg-gray-100 text-brand-dark px-1.5 py-0.5 rounded font-mono font-bold">{username}</code></p>
+                                              {email && <p>Email: <span className="text-slate-700 font-medium">{email}</span></p>}
+                                              {phone && <p>Phone: <span className="text-slate-700 font-mono font-bold">{phone}</span></p>}
+                                              <p>Joined Date: <span className="text-gray-500 font-mono font-bold">{dateJoined}</span></p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          onClick={async () => {
+                                            const confirmed = window.confirm(`Are you sure you want to delete profile "${username}" from D1 users_profile? This action is permanent.`);
+                                            if (confirmed) {
+                                              try {
+                                                const res = await fetch('/api/admin/delete-user', {
+                                                  method: 'POST',
+                                                  headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
+                                                  body: JSON.stringify({ userId: username })
+                                                });
+                                                if (res.ok) {
+                                                  addSystemLog('admin', `Deleted profile "${username}" from D1 users_profile`);
+                                                  await fetchD1Users();
+                                                } else {
+                                                  alert("Failed to delete user profile from D1 server.");
+                                                }
+                                              } catch (err: any) {
+                                                alert(`Error deleting user: ${err?.message}`);
+                                              }
+                                            }
+                                          }}
+                                          className="p-2.5 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-xl cursor-pointer transition-all border border-transparent hover:border-red-100 flex items-center justify-center shrink-0"
+                                          title="Delete User Profile from D1"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    );
+                                  });
+                                })()}
                               </div>
                             </div>
                           </div>

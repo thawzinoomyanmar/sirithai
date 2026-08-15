@@ -54,6 +54,8 @@ export function jsonResponse(data: any, status = 200, extraHeaders: Record<strin
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
       ...extraHeaders,
     },
   });

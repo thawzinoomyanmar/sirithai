@@ -4,9 +4,10 @@ interface SplashScreenProps {
   message?: string;
   hasTimedOut?: boolean;
   onRetry?: () => void;
+  onContinue?: () => void;
 }
 
-export function SplashScreen({ message = "Loading curriculum & learning resources...", hasTimedOut = false, onRetry }: SplashScreenProps) {
+export function SplashScreen({ message = "Loading curriculum & learning resources...", hasTimedOut = false, onRetry, onContinue }: SplashScreenProps) {
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#05081c] text-white overflow-hidden select-none font-sans">
       <div className="relative z-10 flex flex-col items-center max-w-md px-6 text-center">
@@ -32,12 +33,22 @@ export function SplashScreen({ message = "Loading curriculum & learning resource
             <p className="text-xs text-red-300 font-semibold leading-relaxed">
               Authentication response timed out. Please check your network connection.
             </p>
-            <button
-              onClick={onRetry || (() => window.location.reload())}
-              className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform active:scale-95 cursor-pointer border border-white/20"
-            >
-              Retry Loading
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">
+              <button
+                onClick={onRetry || (() => window.location.reload())}
+                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform active:scale-95 cursor-pointer border border-white/20"
+              >
+                Retry Loading
+              </button>
+              {onContinue && (
+                <button
+                  onClick={onContinue}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow transition-all cursor-pointer border border-white/15"
+                >
+                  Continue to App
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="w-full max-w-xs space-y-3">

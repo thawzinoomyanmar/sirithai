@@ -57,7 +57,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     try {
       await db.prepare(
         `INSERT INTO users_profile (id, full_name, email, role, created_at)
-         VALUES (?, ?, ?, 'user', ?)
+         VALUES (?, ?, ?, 'student', ?)
          ON CONFLICT(id) DO UPDATE SET
            full_name = excluded.full_name,
            email = excluded.email;`

@@ -19,7 +19,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
   try {
     const body = await req.json() as any;
-    const { id, full_name, fullName, email, avatar_url, avatarUrl, role } = body;
+    const { id, full_name, fullName, email, avatar_url, avatarUrl, role, phone, xp } = body;
 
     if (!id) {
       return jsonResponse({ success: false, error: 'User ID is required' }, 400);
@@ -30,16 +30,20 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     const mail = email || '';
     const avatar = avatar_url || avatarUrl || '';
     const userRole = role || 'student';
+    const userPhone = phone || null;
+    const userXp = typeof xp === 'number' ? xp : 0;
 
     await db.prepare(`
-      INSERT INTO users_profile (id, full_name, email, avatar_url, role)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         full_name = excluded.full_name,
         email = excluded.email,
         avatar_url = excluded.avatar_url,
-        role = COALESCE(users_profile.role, excluded.role)
-    `).bind(userId, name, mail, avatar, userRole).run();
+        phone = COALESCE(excluded.phone, users_profile.phone),
+        xp = COALESCE(excluded.xp, users_profile.xp),
+        role = COALESCE(excluded.role, users_profile.role)
+    `).bind(userId, name, mail, avatar, userRole, userPhone, userXp).run();
 
     const existingUser = await db.prepare('SELECT * FROM users_profile WHERE id = ?').bind(userId).first();
 

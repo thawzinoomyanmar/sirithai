@@ -98,10 +98,12 @@ function mockApiDevPlugin() {
             try {
               const body = JSON.parse(bodyStr || '{}');
               const id = body.id ? String(body.id).trim().replace(/'/g, "''") : '';
-              const fullName = body.fullName ? String(body.fullName).replace(/'/g, "''") : 'Anonymous Student';
+              const fullName = (body.fullName || body.full_name) ? String(body.fullName || body.full_name).replace(/'/g, "''") : 'Anonymous Student';
               const email = body.email ? String(body.email).replace(/'/g, "''") : '';
-              const avatarUrl = body.avatarUrl ? String(body.avatarUrl).replace(/'/g, "''") : '';
+              const avatarUrl = (body.avatarUrl || body.avatar_url) ? String(body.avatarUrl || body.avatar_url).replace(/'/g, "''") : '';
               const role = body.role ? String(body.role).replace(/'/g, "''") : 'student';
+              const phone = body.phone ? String(body.phone).replace(/'/g, "''") : '';
+              const xp = typeof body.xp === 'number' ? body.xp : 0;
 
               if (!id) {
                 res.statusCode = 400;
@@ -110,13 +112,15 @@ function mockApiDevPlugin() {
               }
 
               const sql = `
-                INSERT INTO users_profile (id, full_name, email, avatar_url, role)
-                VALUES ('${id}', '${fullName}', '${email}', '${avatarUrl}', '${role}')
+                INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp)
+                VALUES ('${id}', '${fullName}', '${email}', '${avatarUrl}', '${role}', '${phone}', ${xp})
                 ON CONFLICT(id) DO UPDATE SET
                   full_name = excluded.full_name,
                   email = excluded.email,
                   avatar_url = excluded.avatar_url,
-                  role = COALESCE(users_profile.role, excluded.role);
+                  phone = COALESCE(NULLIF(excluded.phone, ''), users_profile.phone),
+                  xp = COALESCE(excluded.xp, users_profile.xp),
+                  role = COALESCE(excluded.role, users_profile.role);
               `;
 
               await execPromise(`npx wrangler d1 execute sirithai-db --remote --command="${sql}"`).catch(e => console.warn("Remote D1 user sync note:", e?.message));
@@ -146,7 +150,7 @@ function mockApiDevPlugin() {
             }
 
             const cleanId = userId.replace(/'/g, "''");
-            const profileRes = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT id, full_name, email, avatar_url, role, created_at FROM users_profile WHERE id = '${cleanId}';" --json`).catch(() => ({ stdout: '[]' }));
+            const profileRes = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT id, full_name, email, avatar_url, role, phone, xp, created_at FROM users_profile WHERE id = '${cleanId}';" --json`).catch(() => ({ stdout: '[]' }));
             const parsedProfile = JSON.parse(profileRes.stdout || '[]');
             const userProfile = (parsedProfile && parsedProfile[0] && parsedProfile[0].results && parsedProfile[0].results[0]) || null;
 
@@ -203,22 +207,39 @@ function mockApiDevPlugin() {
           return;
         }
 
-        if (req.url?.startsWith('/api/users') && !req.url.startsWith('/api/users/sync')) {
+        if (req.url?.startsWith('/api/admin/users')) {
           res.setHeader('Content-Type', 'application/json');
           try {
-            const { stdout } = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT * FROM users_profile ORDER BY created_at DESC;" --json`);
+            const { stdout } = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="SELECT id, full_name, email, avatar_url, role, phone, xp, created_at FROM users_profile ORDER BY created_at DESC;" --json`, { timeout: 5000 });
             const parsed = JSON.parse(stdout || '[]');
             const results = (parsed && parsed[0] && parsed[0].results) || [];
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, data: results }));
+            res.end(JSON.stringify({ success: true, data: results, count: results.length }));
           } catch (e: any) {
+            console.warn("[Dev Server Admin Users Note]:", e?.message);
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, data: [] }));
+            res.end(JSON.stringify({ success: true, data: [], count: 0, error: e?.message }));
           }
           return;
         }
 
-        if (req.url?.startsWith('/api/admin/approve-payment') || req.url?.startsWith('/api/approve-payment')) {
+        if (req.url?.startsWith('/api/admin/transactions')) {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            const sql = `SELECT t.*, u.full_name as student_full_name, u.email as student_profile_email, c.name as course_name, c.name_mm as course_name_mm FROM transactions t LEFT JOIN users_profile u ON t.user_id = u.id LEFT JOIN courses c ON t.course_id = c.id ORDER BY t.created_at DESC;`;
+            const { stdout } = await execPromise(`npx wrangler d1 execute sirithai-db --local --command="${sql}" --json`);
+            const parsed = JSON.parse(stdout || '[]');
+            const results = (parsed && parsed[0] && parsed[0].results) || [];
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, data: results, count: results.length }));
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: e?.message }));
+          }
+          return;
+        }
+
+        if (req.url?.startsWith('/api/admin/delete-user')) {
           if (req.method === 'OPTIONS') {
             res.statusCode = 204;
             res.end();
@@ -230,8 +251,40 @@ function mockApiDevPlugin() {
             res.setHeader('Content-Type', 'application/json');
             try {
               const body = JSON.parse(bodyStr || '{}');
-              const id = body.id ? String(body.id).trim().replace(/'/g, "''") : '';
-              const status = body.status ? String(body.status).trim().replace(/'/g, "''") : 'approved';
+              const userId = body.userId || body.id;
+              if (!userId) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ success: false, error: 'User ID is required' }));
+                return;
+              }
+              const sql = `DELETE FROM users_profile WHERE id = '${String(userId).replace(/'/g, "''")}';`;
+              await execPromise(`npx wrangler d1 execute sirithai-db --remote --command="${sql}"`).catch(e => console.warn("Remote D1 delete-user note:", e?.message));
+              await execPromise(`npx wrangler d1 execute sirithai-db --local --command="${sql}"`).catch(e => console.warn("Local D1 delete-user note:", e?.message));
+              res.statusCode = 200;
+              res.end(JSON.stringify({ success: true, message: `User ${userId} deleted from D1` }));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, error: err?.message }));
+            }
+          });
+          return;
+        }
+
+        if (req.url?.startsWith('/api/admin/update-status') || req.url?.startsWith('/api/admin/approve-payment') || req.url?.startsWith('/api/approve-payment')) {
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          let bodyStr = '';
+          req.on('data', (chunk: any) => { bodyStr += chunk; });
+          req.on('end', async () => {
+            res.setHeader('Content-Type', 'application/json');
+            try {
+              const body = JSON.parse(bodyStr || '{}');
+              const transactionId = body.transactionId || body.transaction_id || body.id;
+              const id = transactionId ? String(transactionId).trim().replace(/'/g, "''") : '';
+              const status = body.status ? String(body.status).trim().toLowerCase().replace(/'/g, "''") : 'approved';
 
               if (!id) {
                 res.statusCode = 400;
@@ -240,20 +293,12 @@ function mockApiDevPlugin() {
               }
 
               const sql = `UPDATE transactions SET status = '${status}' WHERE id = '${id}';`;
-              console.log(`[Dev Server D1 Status Update] Updating transaction ${id} to '${status}' in Cloudflare D1...`);
-
-              await execPromise(`npx wrangler d1 execute sirithai-db --remote --command="${sql}"`).catch(e => console.warn("Remote D1 status update note:", e?.message));
-              await execPromise(`npx wrangler d1 execute sirithai-db --local --command="${sql}"`).catch(e => console.warn("Local D1 status update note:", e?.message));
+              await execPromise(`npx wrangler d1 execute sirithai-db --remote --command="${sql}"`).catch(e => console.warn("Remote D1 update-status note:", e?.message));
+              await execPromise(`npx wrangler d1 execute sirithai-db --local --command="${sql}"`).catch(e => console.warn("Local D1 update-status note:", e?.message));
 
               res.statusCode = 200;
-              res.end(JSON.stringify({
-                success: true,
-                message: `Transaction ${id} status updated to '${status}' in D1 successfully.`,
-                id,
-                status
-              }));
+              res.end(JSON.stringify({ success: true, message: `Transaction ${id} status updated to '${status}'`, transactionId: id, status }));
             } catch (err: any) {
-              console.error("[Dev Server D1 Status Update Error]:", err);
               res.statusCode = 500;
               res.end(JSON.stringify({ success: false, error: err?.message }));
             }
@@ -521,9 +566,25 @@ export default defineConfig(() => {
       },
       proxy: {
         '/api': {
-          target: 'http://localhost:9999/.netlify/functions',
+          target: process.env.VITE_DEV_BACKEND_URL || 'http://localhost:8888/.netlify/functions',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
+          rewrite: (path) => {
+            if (path.startsWith('/api/admin/users')) return '/admin-users';
+            if (path.startsWith('/api/admin/transactions')) return '/admin-transactions';
+            if (path.startsWith('/api/admin/delete-user')) return '/admin-delete-user';
+            if (path.startsWith('/api/admin/update-status')) return '/admin-update-status';
+            if (path.startsWith('/api/admin/approve-payment')) return '/admin-approve-payment';
+            if (path.startsWith('/api/webhooks/clerk') || path.startsWith('/api/webhook/clerk')) return '/webhooks-clerk';
+            return path.replace(/^\/api/, '');
+          },
+          configure: (proxy) => {
+            proxy.on('error', (err, _req, res) => {
+              if (res && !res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: `Proxy connection error: ${err.message}` }));
+              }
+            });
+          }
         },
       },
     },

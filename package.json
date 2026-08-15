@@ -8,9 +8,11 @@
     "dev": "vite --port=3000 --host=127.0.0.1",
     "build": "vite build",
     "preview": "vite preview",
+    "netlify": "netlify dev",
+    "netlify:deploy": "netlify deploy",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx test-profile-and-webhook.ts",
+    "test": "tsx test-admin-and-profile.ts && tsx test-profile-and-webhook.ts",
     "cap:sync": "cap sync",
     "cap:open:ios": "cap open ios",
     "cap:open:android": "cap open android"

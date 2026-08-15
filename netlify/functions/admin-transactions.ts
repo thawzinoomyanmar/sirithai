@@ -4,7 +4,7 @@ export const handler = async (event: any, context: any) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Content-Type': 'application/json',
   };
 
@@ -12,7 +12,7 @@ export const handler = async (event: any, context: any) => {
     return { statusCode: 204, headers, body: '' };
   }
 
-  if (event.httpMethod !== 'POST') {
+  if (event.httpMethod !== 'GET') {
     return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: 'Method Not Allowed' }) };
   }
 
@@ -22,30 +22,26 @@ export const handler = async (event: any, context: any) => {
   }
 
   try {
-    let body: any = {};
-    if (event.body) {
-      body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-    }
-    const transactionId = body.transactionId || body.transaction_id || body.id;
-    const status = body.status || 'approved';
-
-    if (!transactionId) {
-      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'transactionId is required' }) };
-    }
-
-    const cleanId = String(transactionId).trim();
-    const newStatus = String(status).trim().toLowerCase();
-
-    await db.prepare('UPDATE transactions SET status = ? WHERE id = ?').bind(newStatus, cleanId).run();
-
+    const sql = `
+      SELECT 
+        t.*,
+        u.full_name as student_full_name,
+        u.email as student_profile_email,
+        c.name as course_name,
+        c.name_mm as course_name_mm
+      FROM transactions t
+      LEFT JOIN users_profile u ON t.user_id = u.id
+      LEFT JOIN courses c ON t.course_id = c.id
+      ORDER BY t.created_at DESC
+    `;
+    const { results } = await db.prepare(sql).all();
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         success: true,
-        message: `Transaction ${cleanId} status updated to '${newStatus}' in D1.`,
-        transactionId: cleanId,
-        status: newStatus
+        data: results || [],
+        count: (results || []).length
       })
     };
   } catch (err: any) {
