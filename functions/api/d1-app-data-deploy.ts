@@ -1,95 +1,58 @@
-export const handler = async (event: any, context: any) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json',
-  };
+import { getDB, jsonResponse, handleOptions } from './dbHelper';
 
-  // OPTIONS preflight check
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: '',
-    };
+export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
+  const req = context.request;
+  const method = req.method;
+
+  if (method === 'OPTIONS') {
+    return handleOptions();
   }
 
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+  if (method !== 'POST') {
+    return jsonResponse({ success: false, error: 'Method Not Allowed' }, 405);
   }
 
-  // Auth gate check
-  const staticAdminHeader = event.headers['x-static-admin'] || event.headers['X-Static-Admin'];
-  const authHeader = event.headers['authorization'] || event.headers['Authorization'];
-  
+  const staticAdminHeader = req.headers.get('x-static-admin');
+  const authHeader = req.headers.get('authorization');
   const isAuthorized = staticAdminHeader === 'true' || authHeader === 'Bearer admin-local-session';
-  
+
   if (!isAuthorized) {
-    return {
-      statusCode: 403,
-      headers,
-      body: JSON.stringify({ error: '403 Forbidden Access: Invalid or missing administrator credentials.' }),
-    };
+    return jsonResponse({ success: false, error: '403 Forbidden Access: Invalid or missing administrator credentials.' }, 403);
   }
 
-  const db = (context && context.env && context.env.DB) || (globalThis as any).env?.DB || (process.env as any).DB;
-  
+  const db = getDB(context);
   if (!db) {
-    console.error("Database connection binding (env.DB) is not bound or initialized.");
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database connection failed',
-        details: 'D1 database binding (env.DB) is not bound in Netlify function context.',
-        code: 'D1_BINDING_MISSING'
-      }),
-    };
+    return jsonResponse({ success: false, error: 'Database connection failed' }, 500);
   }
 
   try {
-    const body = JSON.parse(event.body || '{}');
+    const body = await req.json() as any;
     const { key, value } = body;
 
-    if (!key || !value) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Bad Request: Missing key or value.' }),
-      };
+    if (!key || value === undefined || value === null) {
+      return jsonResponse({ success: false, error: 'Bad Request: Missing key or value.' }, 400);
     }
+
+    const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
 
     const sql = `
       INSERT OR REPLACE INTO app_data (key, value)
       VALUES (?, ?)
     `;
-    
-    const result = await db.prepare(sql).bind(key, value).run();
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ 
-        success: true, 
-        message: `App data key '${key}' deployed successfully.`, 
-        result 
-      }),
-    };
+    const result = await db.prepare(sql).bind(key, valueStr).run();
+
+    return jsonResponse({
+      success: true,
+      message: `App data key '${key}' deployed successfully to D1.`,
+      result
+    });
   } catch (err: any) {
-    console.error("D1 app data deployment failed inside Netlify function:", err);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database query execution failed',
-        details: err.message || err,
-        code: 'D1_QUERY_FAILED'
-      }),
-    };
+    console.error("D1 app data deployment failed:", err);
+    return jsonResponse({
+      success: false,
+      error: 'Database query execution failed',
+      details: err.message || err
+    }, 500);
   }
 };

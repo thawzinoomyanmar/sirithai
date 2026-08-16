@@ -18,6 +18,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       const url = new URL(req.url);
       const courseId = url.searchParams.get('courseId');
 
+      let lessons: any[] = [];
       let query = 'SELECT * FROM lessons ORDER BY rowid ASC';
       let params: any[] = [];
 
@@ -26,20 +27,44 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         params = [courseId];
       }
 
-      const stmt = db.prepare(query);
-      const { results } = params.length > 0 ? await stmt.bind(...params).all() : await stmt.all();
+      try {
+        const stmt = db.prepare(query);
+        const { results } = params.length > 0 ? await stmt.bind(...params).all() : await stmt.all();
 
-      const lessons = (results || []).map((row: any) => ({
-        id: row.id,
-        courseId: row.course_id || 'course-basic',
-        titleThai: row.title_thai,
-        titlePhonetic: row.title_phonetic || '',
-        titleEnglish: row.title_english || '',
-        titleMyanmar: row.title_myanmar || '',
-        dialogue: row.dialogue ? (typeof row.dialogue === 'string' ? JSON.parse(row.dialogue) : row.dialogue) : [],
-        grammar: row.grammar ? (typeof row.grammar === 'string' ? JSON.parse(row.grammar) : row.grammar) : [],
-        quizzes: row.quizzes ? (typeof row.quizzes === 'string' ? JSON.parse(row.quizzes) : row.quizzes) : []
-      }));
+        if (results && results.length > 0) {
+          lessons = results.map((row: any) => ({
+            id: row.id,
+            courseId: row.course_id || 'course-basic',
+            titleThai: row.title_thai,
+            titlePhonetic: row.title_phonetic || '',
+            titleEnglish: row.title_english || '',
+            titleMyanmar: row.title_myanmar || '',
+            dialogue: row.dialogue ? (typeof row.dialogue === 'string' ? JSON.parse(row.dialogue) : row.dialogue) : [],
+            grammar: row.grammar ? (typeof row.grammar === 'string' ? JSON.parse(row.grammar) : row.grammar) : [],
+            quizzes: row.quizzes ? (typeof row.quizzes === 'string' ? JSON.parse(row.quizzes) : row.quizzes) : []
+          }));
+        }
+      } catch (dbErr: any) {
+        console.warn("Direct D1 lessons query note:", dbErr?.message || dbErr);
+      }
+
+      // Fallback to app_data key = 'lessons' if lessons table returned empty
+      if (lessons.length === 0) {
+        try {
+          const appDataRow = await db.prepare('SELECT value FROM app_data WHERE key = ?').bind('lessons').first();
+          if (appDataRow && appDataRow.value) {
+            const parsed = typeof appDataRow.value === 'string' ? JSON.parse(appDataRow.value) : appDataRow.value;
+            if (Array.isArray(parsed)) {
+              lessons = parsed;
+              if (courseId) {
+                lessons = lessons.filter((l: any) => (l.courseId || 'course-basic') === courseId);
+              }
+            }
+          }
+        } catch (appDataErr: any) {
+          console.warn("app_data lessons fallback note:", appDataErr?.message || appDataErr);
+        }
+      }
 
       return jsonResponse({ success: true, data: lessons });
     }

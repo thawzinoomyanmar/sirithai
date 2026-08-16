@@ -1,62 +1,32 @@
-import { getDB } from './dbHelper';
+import { getDB, jsonResponse, handleOptions } from './dbHelper';
 
-export const handler = async (event: any, context: any) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json',
-  };
+export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
+  const req = context.request;
+  const method = req.method;
 
-  // OPTIONS preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: '',
-    };
+  if (method === 'OPTIONS') {
+    return handleOptions();
   }
 
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+  if (method !== 'POST') {
+    return jsonResponse({ success: false, error: 'Method Not Allowed' }, 405);
   }
 
-  // Auth gate check
-  const authHeader = event.headers['authorization'] || event.headers['Authorization'];
-  const staticAdminHeader = event.headers['x-static-admin'] || event.headers['X-Static-Admin'];
-  
+  const authHeader = req.headers.get('authorization');
+  const staticAdminHeader = req.headers.get('x-static-admin');
   const isAuthorized = staticAdminHeader === 'true' || authHeader === 'Bearer admin-local-session';
-  
+
   if (!isAuthorized) {
-    return {
-      statusCode: 403,
-      headers,
-      body: JSON.stringify({ error: '403 Forbidden Access: Invalid or missing administrator session credentials.' }),
-    };
+    return jsonResponse({ success: false, error: '403 Forbidden Access: Invalid or missing administrator credentials.' }, 403);
   }
 
-  // Audit D1 connection binding
   const db = getDB(context);
-  
   if (!db) {
-    console.error("Database connection binding (env.DB) is not bound or initialized.");
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database connection failed',
-        details: 'D1 database binding (env.DB) is not bound in Netlify function context.',
-        code: 'D1_BINDING_MISSING'
-      }),
-    };
+    return jsonResponse({ success: false, error: 'Database connection failed' }, 500);
   }
 
   try {
-    const body = JSON.parse(event.body || '{}');
+    const body = await req.json() as any;
     const thai_text = body.thai_text || body.thai || '';
     const english_text = body.english_text || body.english || '';
     const myanmar_text = body.myanmar_text || body.myanmar || '';
@@ -67,19 +37,13 @@ export const handler = async (event: any, context: any) => {
     const pdf_drive_url = body.pdf_drive_url || null;
 
     if (!thai_text || !myanmar_text) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Bad Request: Missing required fields (thai_text, myanmar_text).' }),
-      };
+      return jsonResponse({ success: false, error: 'Bad Request: Missing required fields (thai_text, myanmar_text).' }, 400);
     }
 
-    // Check if the word already exists
     const existing = await db.prepare('SELECT id FROM words_phrases WHERE thai_text = ?').bind(thai_text).first();
 
     let result;
     if (existing) {
-      // Update existing record
       const sql = `
         UPDATE words_phrases
         SET english_text = ?, myanmar_text = ?, phonetic = ?, phonetic_mm = ?, category = ?, audio_url = ?, pdf_drive_url = ?
@@ -96,7 +60,6 @@ export const handler = async (event: any, context: any) => {
         existing.id
       ).run();
     } else {
-      // Insert new record
       const sql = `
         INSERT INTO words_phrases (thai_text, english_text, myanmar_text, phonetic, phonetic_mm, category, audio_url, pdf_drive_url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -113,21 +76,9 @@ export const handler = async (event: any, context: any) => {
       ).run();
     }
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ success: true, message: 'Vocabulary inserted into Cloudflare D1 successfully.', result }),
-    };
+    return jsonResponse({ success: true, message: 'Vocabulary inserted into Cloudflare D1 successfully.', result });
   } catch (err: any) {
-    console.error("D1 Insert failed inside Netlify function:", err);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database query execution failed',
-        details: err.message || err,
-        code: 'D1_QUERY_FAILED'
-      }),
-    };
+    console.error("D1 Insert failed:", err);
+    return jsonResponse({ success: false, error: 'Database query execution failed', details: err.message || err }, 500);
   }
 };

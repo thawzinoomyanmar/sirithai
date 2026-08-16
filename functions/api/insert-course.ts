@@ -1,105 +1,64 @@
-import { getDB } from './dbHelper';
+import { getDB, jsonResponse, handleOptions } from './dbHelper';
 
-export const handler = async (event: any, context: any) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json',
-  };
+export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
+  const req = context.request;
+  const method = req.method;
 
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: '',
-    };
+  if (method === 'OPTIONS') {
+    return handleOptions();
   }
 
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+  if (method !== 'POST') {
+    return jsonResponse({ success: false, error: 'Method Not Allowed' }, 405);
   }
 
-  const authHeader = event.headers['authorization'] || event.headers['Authorization'];
-  const staticAdminHeader = event.headers['x-static-admin'] || event.headers['X-Static-Admin'];
+  const staticAdminHeader = req.headers.get('x-static-admin');
+  const authHeader = req.headers.get('authorization');
   const isAuthorized = staticAdminHeader === 'true' || authHeader === 'Bearer admin-local-session';
 
   if (!isAuthorized) {
-    return {
-      statusCode: 403,
-      headers,
-      body: JSON.stringify({ error: '403 Forbidden Access: Invalid or missing administrator credentials.' }),
-    };
+    return jsonResponse({ success: false, error: '403 Forbidden Access: Invalid or missing administrator credentials.' }, 403);
   }
 
   const db = getDB(context);
-
   if (!db) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database connection failed',
-        details: 'D1 database binding (env.DB) is not bound in Netlify function context.',
-      }),
-    };
+    return jsonResponse({ success: false, error: 'Database connection failed' }, 500);
   }
 
   try {
-    // Ensure table exists
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS courses (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT
-      )
-    `).run();
+    const body = await req.json() as any;
+    const { id, name, name_mm, nameMm, description, price_amount, priceAmount, currency, duration, instructor, resources } = body;
 
-    const body = JSON.parse(event.body || '{}');
-    const id = body.id;
-    const name = body.name || '';
-    const description = body.description || '';
-
-    if (!id) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Bad Request: Missing course id.' }),
-      };
-    }
+    const courseId = id || `course-${Date.now()}`;
+    const courseName = name || '';
+    const courseNameMm = name_mm || nameMm || courseName;
+    const desc = description || '';
+    const price = price_amount || priceAmount || 0;
+    const curr = currency || 'MMK';
+    const dur = duration || '';
+    const inst = instructor || '';
+    const resStr = resources ? JSON.stringify(resources) : '[]';
 
     const sql = `
-      INSERT INTO courses (id, name, description)
-      VALUES (?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        description = excluded.description
+      INSERT OR REPLACE INTO courses (id, name, name_mm, description, price_amount, currency, duration, instructor, resources)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const result = await db.prepare(sql).bind(
-      id,
-      name,
-      description
+      courseId,
+      courseName,
+      courseNameMm,
+      desc,
+      price,
+      curr,
+      dur,
+      inst,
+      resStr
     ).run();
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ success: true, message: 'Course inserted into Cloudflare D1 successfully.', result }),
-    };
+    return jsonResponse({ success: true, message: 'Course saved successfully', result, id: courseId });
   } catch (err: any) {
-    console.error("D1 insert course failed:", err);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database query execution failed',
-        details: err.message || err,
-      }),
-    };
+    console.error("Insert course failed:", err);
+    return jsonResponse({ success: false, error: err.message || err }, 500);
   }
 };

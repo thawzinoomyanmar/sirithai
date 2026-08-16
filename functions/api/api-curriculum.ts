@@ -1,65 +1,49 @@
-import { getDB } from './dbHelper';
+import { getDB, jsonResponse, handleOptions } from './dbHelper';
 
-export const handler = async (event: any, context: any) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-    'Content-Type': 'application/json',
-  };
+export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
+  const req = context.request;
+  const method = req.method;
 
-  // 1. Handle CORS Preflight OPTIONS
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: '',
-    };
+  if (method === 'OPTIONS') {
+    return handleOptions();
   }
 
-  if (event.httpMethod !== 'POST' && event.httpMethod !== 'PUT' && event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+  if (method !== 'POST' && method !== 'PUT' && method !== 'GET') {
+    return jsonResponse({ error: 'Method Not Allowed' }, 405);
   }
 
-  // 2. Auth Gate Check (support X-Static-Admin or Bearer local admin session)
-  const authHeader = event.headers['authorization'] || event.headers['Authorization'];
-  const staticAdminHeader = event.headers['x-static-admin'] || event.headers['X-Static-Admin'];
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  const staticAdminHeader = req.headers.get('x-static-admin') || req.headers.get('X-Static-Admin');
   const isAuthorized = staticAdminHeader === 'true' || authHeader === 'Bearer admin-local-session' || process.env.NODE_ENV !== 'production';
 
   if (!isAuthorized) {
-    return {
-      statusCode: 403,
-      headers,
-      body: JSON.stringify({ error: '403 Forbidden Access: Missing administrator credentials.' }),
-    };
+    return jsonResponse({ error: '403 Forbidden Access: Missing administrator credentials.' }, 403);
   }
 
-  // 3. Obtain D1 Database Connection
   const db = getDB(context);
   if (!db) {
-    console.error("Database connection binding (env.DB) is not bound or initialized.");
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Database connection failed',
-        details: 'D1 database binding (env.DB) is not bound in Netlify function context.',
-        code: 'D1_BINDING_MISSING'
-      }),
-    };
+    return jsonResponse({
+      error: 'Database connection failed',
+      details: 'D1 database binding (env.DB) is not bound in function context.',
+      code: 'D1_BINDING_MISSING'
+    }, 500);
   }
 
   try {
-    const queryParams = event.queryStringParameters || {};
-    const body = event.body ? JSON.parse(event.body) : {};
-    const table = (queryParams.table || body.table || 'lessons').toLowerCase();
-    const lessonId = body.lesson_id || body.lessonId || body.id;
+    const url = new URL(req.url);
+    let body: any = {};
+    if (method === 'POST' || method === 'PUT') {
+      try {
+        body = await req.json();
+      } catch {
+        body = {};
+      }
+    }
 
-    // Ensure core tables exist before operations
+    const table = (url.searchParams.get('table') || body.table || 'lessons').toLowerCase();
+    const lessonId = body.lesson_id || body.lessonId || body.id || url.searchParams.get('lessonId') || url.searchParams.get('id');
+
+    // Ensure core tables exist
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS lessons (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,20 +81,12 @@ export const handler = async (event: any, context: any) => {
     `).run();
 
     // GET handler
-    if (event.httpMethod === 'GET') {
+    if (method === 'GET') {
       if (table === 'lessons' && lessonId) {
         const row = await db.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(lessonId).first();
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, lesson: row }),
-        };
+        return jsonResponse({ success: true, lesson: row });
       }
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, message: 'D1 API Curriculum ready.' }),
-      };
+      return jsonResponse({ success: true, message: 'D1 API Curriculum ready.' });
     }
 
     // POST / PUT handlers
@@ -126,7 +102,6 @@ export const handler = async (event: any, context: any) => {
       const quizzes = body.quizzes || body.quiz ? (typeof (body.quizzes || body.quiz) === 'string' ? (body.quizzes || body.quiz) : JSON.stringify(body.quizzes || body.quiz)) : '[]';
 
       if (id) {
-        // Upsert existing lesson
         const existing = await db.prepare(`SELECT id FROM lessons WHERE id = ?`).bind(id).first();
         if (existing) {
           await db.prepare(`
@@ -147,16 +122,12 @@ export const handler = async (event: any, context: any) => {
         `).bind(course_id, title_thai, title_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes).run();
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: `Lesson metadata ${id ? '#' + id : ''} saved to Cloudflare D1 successfully.`,
-          table: 'lessons',
-          lessonId: id
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        message: `Lesson metadata ${id ? '#' + id : ''} saved to Cloudflare D1 successfully.`,
+        table: 'lessons',
+        lessonId: id
+      });
     }
 
     if (table === 'vocab' || table === 'vocabulary') {
@@ -164,12 +135,10 @@ export const handler = async (event: any, context: any) => {
       const categoryTag = body.category || (lessonId ? `Lesson ${lessonId}` : 'general');
 
       if (lessonId && Array.isArray(body.vocab)) {
-        // Save lesson vocab JSON to app_data key for fast fallback
         const key = `thai_custom_vocab_${lessonId}`;
         await db.prepare(`INSERT OR REPLACE INTO app_data (key, value) VALUES (?, ?)`).bind(key, JSON.stringify(body.vocab)).run();
       }
 
-      // Also upsert individual word rows into words_phrases
       for (const item of vocabList) {
         const thai = item.thai || item.thai_text || '';
         const english = item.english || item.english_text || '';
@@ -188,16 +157,12 @@ export const handler = async (event: any, context: any) => {
         }
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: `Vocabulary dataset for Lesson ${lessonId || 'general'} saved to Cloudflare D1 successfully.`,
-          table: 'vocab',
-          count: vocabList.length
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        message: `Vocabulary dataset for Lesson ${lessonId || 'general'} saved to Cloudflare D1 successfully.`,
+        table: 'vocab',
+        count: vocabList.length
+      });
     }
 
     if (table === 'dialogue') {
@@ -214,20 +179,15 @@ export const handler = async (event: any, context: any) => {
           `).bind(lessonId, dialogueStr).run();
         }
 
-        // Also store fallback key in app_data
         await db.prepare(`INSERT OR REPLACE INTO app_data (key, value) VALUES (?, ?)`).bind(`thai_custom_dialogue_${lessonId}`, dialogueStr).run();
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: `Dialogue configuration for Lesson ${lessonId} saved to Cloudflare D1 successfully.`,
-          table: 'dialogue',
-          lessonId
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        message: `Dialogue configuration for Lesson ${lessonId} saved to Cloudflare D1 successfully.`,
+        table: 'dialogue',
+        lessonId
+      });
     }
 
     if (table === 'grammar') {
@@ -244,20 +204,15 @@ export const handler = async (event: any, context: any) => {
           `).bind(lessonId, grammarStr).run();
         }
 
-        // Also store fallback key in app_data
         await db.prepare(`INSERT OR REPLACE INTO app_data (key, value) VALUES (?, ?)`).bind(`thai_custom_grammar_${lessonId}`, grammarStr).run();
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: `Grammar rules configuration for Lesson ${lessonId} saved to Cloudflare D1 successfully.`,
-          table: 'grammar',
-          lessonId
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        message: `Grammar rules configuration for Lesson ${lessonId} saved to Cloudflare D1 successfully.`,
+        table: 'grammar',
+        lessonId
+      });
     }
 
     if (table === 'quizzes' || table === 'quiz') {
@@ -274,37 +229,24 @@ export const handler = async (event: any, context: any) => {
           `).bind(lessonId, quizzesStr).run();
         }
 
-        // Also store fallback key in app_data
         await db.prepare(`INSERT OR REPLACE INTO app_data (key, value) VALUES (?, ?)`).bind(`thai_custom_quizzes_${lessonId}`, quizzesStr).run();
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: `Interactive quizzes dataset for Lesson ${lessonId} saved to Cloudflare D1 successfully.`,
-          table: 'quizzes',
-          lessonId
-        }),
-      };
+      return jsonResponse({
+        success: true,
+        message: `Interactive quizzes dataset for Lesson ${lessonId} saved to Cloudflare D1 successfully.`,
+        table: 'quizzes',
+        lessonId
+      });
     }
 
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: `Invalid table parameter '${table}'. Supported: lessons, vocab, dialogue, grammar, quizzes` }),
-    };
+    return jsonResponse({ error: `Invalid table parameter '${table}'. Supported: lessons, vocab, dialogue, grammar, quizzes` }, 400);
 
   } catch (err: any) {
     console.error("D1 API Curriculum operation failed:", err);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'D1 Database operation failed',
-        details: err.message || String(err),
-      }),
-    };
+    return jsonResponse({
+      error: 'D1 Database operation failed',
+      details: err.message || String(err),
+    }, 500);
   }
 };

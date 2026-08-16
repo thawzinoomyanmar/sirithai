@@ -920,9 +920,30 @@ export default function App() {
     initAutoSync();
 
     const fetchDynamicDataAndSync = async () => {
+      const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+      
+      // Dedicated public API fetch for user lessons with required logging
+      console.log("Fetching user lessons...");
+      try {
+        const lessonsRes = await fetch(`${apiBase}/api/lessons`);
+        if (lessonsRes.ok) {
+          const lessonsData: any = await lessonsRes.json();
+          console.log("User lessons received:", lessonsData);
+          if (lessonsData && lessonsData.success && Array.isArray(lessonsData.data) && lessonsData.data.length > 0) {
+            setLessons(lessonsData.data);
+            localStorage.setItem('thai_lessons_curriculum', JSON.stringify(lessonsData.data));
+          }
+        } else {
+          const errText = await lessonsRes.text().catch(() => '');
+          console.error("Error fetching user lessons:", `HTTP ${lessonsRes.status}: ${lessonsRes.statusText || errText}`);
+        }
+      } catch (fetchErr: any) {
+        console.error("Error fetching user lessons:", fetchErr?.message || fetchErr);
+      }
+
       try {
         console.log("⚡ Fetching all dynamic datasets from Cloudflare D1...");
-        const response = await fetch('/api/dynamic-data');
+        const response = await fetch(`${apiBase}/api/dynamic-data`);
         if (response.ok) {
           const result: any = await response.json();
           if (result.success && result.data) {
@@ -936,7 +957,7 @@ export default function App() {
               grammar_ext: d1GrammarExt
             } = result.data;
             
-            if (d1Lessons) {
+            if (d1Lessons && Array.isArray(d1Lessons) && d1Lessons.length > 0) {
               setLessons(d1Lessons);
               localStorage.setItem('thai_lessons_curriculum', JSON.stringify(d1Lessons));
             }
@@ -3959,9 +3980,12 @@ startxref
   };
 
   const activeCourse = courses.find(c => c.id === selectedCourseTab);
-  const courseLessons = activeCourse 
+  let courseLessons = activeCourse 
     ? lessons.filter(l => (l.courseId || 'course-basic') === activeCourse.id)
-    : lessons; // Fallback to all lessons if resources tab is picked
+    : lessons;
+  if (courseLessons.length === 0 && lessons.length > 0) {
+    courseLessons = lessons;
+  }
 
   const lessonsPerPage = 6;
   const totalLessons = courseLessons.length;
