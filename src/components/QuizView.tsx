@@ -3,6 +3,7 @@ import { DialogueLine, QuizQuestion } from '../types';
 import { Check, X, Award, HelpCircle, ArrowRight, Volume2, Volume1, Volume, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSingleSentenceEnglish } from '../utils/sentenceUtils';
+import { speakGlobalText } from '../utils/audioManager';
 
 interface QuizViewProps {
   questions: QuizQuestion[];
@@ -31,7 +32,16 @@ export default function QuizView({
   const [correctCount, setCorrectCount] = useState<number>(0);
   const [showResults, setShowResults] = useState<boolean>(false);
 
-  const activeQuestion = questions[currentIdx];
+  const questionsList = questions || [];
+  const activeQuestion = questionsList[currentIdx];
+
+  if (!questionsList.length || !activeQuestion) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-gray-200">
+        <p className="text-xs font-bold font-sans text-brand-muted">No quiz questions available for this lesson.</p>
+      </div>
+    );
+  }
 
   const handleSelectOption = (option: string) => {
     if (isAnswered) return;
@@ -46,8 +56,6 @@ export default function QuizView({
   };
 
   const speakText = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
-    
     // Cycle shared speed index
     const nextIndex = (audioSpeedIndex + 1) % 3;
     setAudioSpeedIndex(nextIndex);
@@ -55,11 +63,7 @@ export default function QuizView({
     const rates = [0.85, 0.7, 0.5];
     const rate = rates[nextIndex];
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'th-TH';
-    utterance.rate = rate;
-    window.speechSynthesis.speak(utterance);
+    speakGlobalText(text, 'th-TH', rate);
   };
 
   const handleNext = () => {

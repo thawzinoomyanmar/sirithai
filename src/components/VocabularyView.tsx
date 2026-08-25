@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { localDB } from '../utils/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
+import { playGlobalAudio, speakGlobalText } from '../utils/audioManager';
+
 interface VocabularyViewProps {
   lessonId: number;
   onWordMastered: (word: string) => void;
@@ -96,15 +98,11 @@ export default function VocabularyView({
 
       if (match && (match.audio_blob || match.audio_url)) {
         const audioUrl = match.audio_blob ? URL.createObjectURL(match.audio_blob) : match.audio_url!;
-        const audio = new Audio(audioUrl);
-        
-        const rates = [1.0, 0.85, 0.7]; // Speed options matching the speeds
-        audio.playbackRate = rates[nextIndex];
-        
-        audio.play().catch(err => {
-          console.warn("Audio play failed, falling back to TTS:", err);
-          runTTS(text, nextIndex);
-        });
+        const audio = playGlobalAudio(audioUrl);
+        if (audio) {
+          const rates = [1.0, 0.85, 0.7]; // Speed options matching the speeds
+          audio.playbackRate = rates[nextIndex];
+        }
         return;
       }
     } catch (e) {
@@ -114,16 +112,9 @@ export default function VocabularyView({
   };
 
   const runTTS = (text: string, nextIndex: number) => {
-    if (!('speechSynthesis' in window)) return;
-
     const rates = [0.85, 0.7, 0.5];
     const rate = rates[nextIndex];
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'th-TH';
-    utterance.rate = rate;
-    window.speechSynthesis.speak(utterance);
+    speakGlobalText(text, 'th-TH', rate);
   };
 
   // Generate vocabulary matching questions
@@ -242,7 +233,7 @@ export default function VocabularyView({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {words.map((w, idx) => {
+                  {(words || []).map((w, idx) => {
                     const isSelected = selectedWord?.thai === w.thai;
                     const isMastered = masteredWords.includes(w.thai);
 

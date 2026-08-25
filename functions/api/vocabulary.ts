@@ -16,14 +16,40 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   try {
     if (method === 'GET') {
       const url = new URL(req.url);
-      const category = url.searchParams.get('category');
+      const categoryId = url.searchParams.get('category') || url.searchParams.get('category_id') || url.searchParams.get('categoryId');
+      const type = url.searchParams.get('type');
 
-      let query = 'SELECT * FROM words_phrases ORDER BY id ASC';
+      if (type === 'categories') {
+        const { results } = await db.prepare('SELECT * FROM vocab_categories ORDER BY order_index ASC, id ASC').all();
+        const categories = (results || []).map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          nameMyanmar: row.name_myanmar || row.name,
+          description: row.description || '',
+          icon: row.icon || 'BookOpen',
+          coverColor: row.cover_color || 'purple',
+          isFree: row.is_free !== 0
+        }));
+        return jsonResponse({ success: true, data: categories });
+      }
+
+      let query = `
+        SELECT vi.*, vc.name AS category_name
+        FROM vocab_items vi
+        LEFT JOIN vocab_categories vc ON vi.category_id = vc.id
+        ORDER BY vi.order_index ASC, vi.id ASC
+      `;
       let params: any[] = [];
 
-      if (category) {
-        query = 'SELECT * FROM words_phrases WHERE category = ? ORDER BY id ASC';
-        params = [category];
+      if (categoryId) {
+        query = `
+          SELECT vi.*, vc.name AS category_name
+          FROM vocab_items vi
+          LEFT JOIN vocab_categories vc ON vi.category_id = vc.id
+          WHERE vi.category_id = ? OR LOWER(vc.name) = LOWER(?)
+          ORDER BY vi.order_index ASC, vi.id ASC
+        `;
+        params = [categoryId, categoryId];
       }
 
       const stmt = db.prepare(query);
@@ -31,14 +57,16 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
       const items = (results || []).map((row: any) => ({
         id: row.id,
-        thai: row.thai_text,
-        english: row.english_text || '',
-        myanmar: row.myanmar_text || '',
+        thai: row.thai,
+        english: row.english || '',
+        myanmar: row.myanmar || '',
         phonetic: row.phonetic || '',
         phoneticMm: row.phonetic_mm || '',
-        category: row.category || 'general',
+        category: row.category_id || row.category_name || 'general',
+        categoryId: row.category_id,
         audioUrl: row.audio_url || null,
-        pdfDriveUrl: row.pdf_drive_url || null
+        pdfDriveUrl: row.pdf_drive_url || null,
+        illustration: row.illustration || null
       }));
 
       return jsonResponse({ success: true, data: items });
@@ -46,61 +74,71 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
     if (method === 'POST') {
       const body = await req.json() as any;
-      const { thai_text, thai, english_text, english, myanmar_text, myanmar, phonetic, phonetic_mm, phoneticMm, category, audio_url, audioUrl, pdf_drive_url, pdfDriveUrl } = body;
+      const { category_id, categoryId, category, thai, thai_text, english, english_text, myanmar, myanmar_text, phonetic, phonetic_mm, phoneticMm, audio_url, audioUrl, pdf_drive_url, pdfDriveUrl, illustration } = body;
 
-      const tText = thai_text || thai || '';
-      const mText = myanmar_text || myanmar || '';
-      const eText = english_text || english || '';
+      const catId = category_id || categoryId || category || 'general';
+      const tText = thai || thai_text || '';
+      const eText = english || english_text || '';
+      const mText = myanmar || myanmar_text || '';
       const pText = phonetic || '';
       const pmText = phonetic_mm || phoneticMm || '';
-      const cat = category || 'general';
       const aUrl = audio_url || audioUrl || null;
       const pdfUrl = pdf_drive_url || pdfDriveUrl || null;
+      const illText = illustration || null;
 
       if (!tText) {
-        return jsonResponse({ success: false, error: 'thai_text is required' }, 400);
+        return jsonResponse({ success: false, error: 'thai text is required' }, 400);
       }
 
-      const res = await db.prepare(`
-        INSERT INTO words_phrases (thai_text, english_text, myanmar_text, phonetic, phonetic_mm, category, audio_url, pdf_drive_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(tText, eText, mText, pText, pmText, cat, aUrl, pdfUrl).run();
+      // Ensure category exists in vocab_categories table
+      await db.prepare(`
+        INSERT INTO vocab_categories (id, name, name_myanmar)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+      `).bind(catId, catId, catId).run();
 
-      return jsonResponse({ success: true, message: 'Vocabulary inserted successfully', id: res.meta?.lastRowId });
+      const res = await db.prepare(`
+        INSERT INTO vocab_items (category_id, thai, phonetic, phonetic_mm, english, myanmar, audio_url, pdf_drive_url, illustration)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(catId, tText, pText, pmText, eText, mText, aUrl, pdfUrl, illText).run();
+
+      return jsonResponse({ success: true, message: 'Vocabulary item inserted successfully', id: res.meta?.lastRowId });
     }
 
     if (method === 'PUT') {
       const body = await req.json() as any;
-      const { id, thai_text, thai, english_text, english, myanmar_text, myanmar, phonetic, phonetic_mm, phoneticMm, category, audio_url, audioUrl, pdf_drive_url, pdfDriveUrl } = body;
+      const { id, category_id, categoryId, category, thai, thai_text, english, english_text, myanmar, myanmar_text, phonetic, phonetic_mm, phoneticMm, audio_url, audioUrl, pdf_drive_url, pdfDriveUrl, illustration } = body;
 
       if (!id) {
         return jsonResponse({ success: false, error: 'id is required for update' }, 400);
       }
 
       await db.prepare(`
-        UPDATE words_phrases SET
-          thai_text = COALESCE(?, thai_text),
-          english_text = COALESCE(?, english_text),
-          myanmar_text = COALESCE(?, myanmar_text),
+        UPDATE vocab_items SET
+          category_id = COALESCE(?, category_id),
+          thai = COALESCE(?, thai),
           phonetic = COALESCE(?, phonetic),
           phonetic_mm = COALESCE(?, phonetic_mm),
-          category = COALESCE(?, category),
+          english = COALESCE(?, english),
+          myanmar = COALESCE(?, myanmar),
           audio_url = COALESCE(?, audio_url),
-          pdf_drive_url = COALESCE(?, pdf_drive_url)
+          pdf_drive_url = COALESCE(?, pdf_drive_url),
+          illustration = COALESCE(?, illustration)
         WHERE id = ?
       `).bind(
-        thai_text || thai || null,
-        english_text || english || null,
-        myanmar_text || myanmar || null,
+        category_id || categoryId || category || null,
+        thai || thai_text || null,
         phonetic || null,
         phonetic_mm || phoneticMm || null,
-        category || null,
+        english || english_text || null,
+        myanmar || myanmar_text || null,
         audio_url || audioUrl || null,
         pdf_drive_url || pdfDriveUrl || null,
+        illustration || null,
         id
       ).run();
 
-      return jsonResponse({ success: true, message: 'Vocabulary updated successfully', id });
+      return jsonResponse({ success: true, message: 'Vocabulary item updated successfully', id });
     }
 
     if (method === 'DELETE') {
@@ -111,12 +149,12 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         return jsonResponse({ success: false, error: 'id search param is required' }, 400);
       }
 
-      await db.prepare('DELETE FROM words_phrases WHERE id = ?').bind(id).run();
-      return jsonResponse({ success: true, message: 'Vocabulary deleted successfully', id });
+      await db.prepare('DELETE FROM vocab_items WHERE id = ?').bind(id).run();
+      return jsonResponse({ success: true, message: 'Vocabulary item deleted successfully', id });
     }
 
     return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
   } catch (err: any) {
-    return jsonResponse({ success: false, error: err.message || err }, 500);
+    return jsonResponse({ success: false, error: err.message || String(err) }, 500);
   }
 };

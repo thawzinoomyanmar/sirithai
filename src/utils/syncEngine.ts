@@ -285,8 +285,68 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
               });
             }
           });
-          addSyncLog('sync', `Successfully pulled ${chapters.length} grammar chapters from Cloudflare D1.`, 'success');
         }
+      }
+
+      // Pull grammar_ext relational records
+      try {
+        addSyncLog('sync', 'Querying Cloudflare D1 for grammar_ext relational records...', 'info');
+        const grammarExtRes = await fetch('/api/grammar');
+        if (grammarExtRes.ok) {
+          const grammarExtData: any = await grammarExtRes.json();
+          if (grammarExtData.success && Array.isArray(grammarExtData.data)) {
+            const grammarExtMap: Record<number, any> = {};
+            for (const item of grammarExtData.data) {
+              const chNum = Number(item.chapter_number || item.chapterNumber || 1);
+              let parsedExamples = item.examples;
+              if (!parsedExamples && item.examples_json) {
+                try {
+                  parsedExamples = typeof item.examples_json === 'string' ? JSON.parse(item.examples_json) : item.examples_json;
+                } catch (e) {
+                  parsedExamples = [];
+                }
+              }
+
+              let vocab: any[] = [];
+              let sentences: any[] = [];
+              let dialogue: any[] = [];
+              let conversation: any[] = [];
+              let examplesList: any[] = [];
+
+              if (Array.isArray(parsedExamples)) {
+                vocab = parsedExamples;
+                examplesList = parsedExamples;
+              } else if (typeof parsedExamples === 'object' && parsedExamples !== null) {
+                vocab = parsedExamples.vocab || [];
+                sentences = parsedExamples.qa || parsedExamples.sentences || [];
+                dialogue = parsedExamples.dialogue || [];
+                conversation = parsedExamples.conversation || [];
+                examplesList = parsedExamples.examples || [];
+              }
+
+              grammarExtMap[chNum] = {
+                id: item.id,
+                chapterNumber: chNum,
+                title: item.title || '',
+                title_myanmar: item.title_myanmar || '',
+                explanation: item.explanation || '',
+                explanation_myanmar: item.explanation_myanmar || '',
+                vocab,
+                sentences,
+                qa: sentences,
+                dialogue,
+                conversation,
+                examples: examplesList,
+                examples_json: item.examples_json
+              };
+            }
+            localStorage.setItem('thai_grammar_ext_data', JSON.stringify(grammarExtMap));
+            (window as any).__grammarExtMap = grammarExtMap;
+            addSyncLog('sync', `Successfully pulled ${grammarExtData.data.length} grammar_ext chapters from Cloudflare D1.`, 'success');
+          }
+        }
+      } catch (err: any) {
+        addSyncLog('sync', `D1 grammar_ext pull notice: ${err.message}`, 'warning');
       }
 
       // Pull alphabet

@@ -3,7 +3,6 @@ import { getDB, jsonResponse, handleOptions } from '../dbHelper';
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   const req = context.request;
   const method = req.method;
-  const env = context.env;
 
   if (method === 'OPTIONS') {
     return handleOptions();
@@ -14,7 +13,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   }
 
   const db = getDB(context);
-  if (!db && (!env || !env.DB)) {
+  if (!db) {
     console.error("D1 Database binding (env.DB) is undefined!");
     return new Response("D1 Database binding (env.DB) is undefined!", { status: 500 });
   }
@@ -30,12 +29,16 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     }
 
     const userId = String(id).trim();
-    const name = full_name || fullName || 'Anonymous Student';
+    const name = full_name || fullName;
     const mail = email || '';
     const avatar = avatar_url || avatarUrl || '';
-    const userRole = role || 'student';
+    const userRole = role;
     const userPhone = phone || null;
-    const userXp = typeof xp === 'number' ? xp : 0;
+    const userXp = typeof xp === 'number' ? xp : null;
+
+    if (!name || !mail) {
+      return jsonResponse({ success: false, error: 'User full name and email are required' }, 400);
+    }
 
     await db.prepare(`
       INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp)
@@ -55,7 +58,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     return jsonResponse({
       success: true,
       message: 'User profile synced to Cloudflare D1 successfully.',
-      data: existingUser || { id: userId, full_name: name, email: mail, avatar_url: avatar, role: userRole }
+      data: existingUser
     });
   } catch (e: any) {
     console.error("Backend Sync Error:", e);

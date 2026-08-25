@@ -2,13 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, startTransition } from
 import { useUser, useAuth, useSession } from '@clerk/react';
 import { useSignUp, useSignIn } from '@clerk/react/legacy';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { lessonsData } from './data/lessonsData';
-import { grammarChapters as initialGrammarChapters, GrammarChapter } from './data/grammarChapters';
-import { orientationData as initialOrientationData, OrientationArticle } from './data/orientation';
-import { pdfVocabulary } from './data/pdfVocabulary';
-import { getGrammarExtDataForChapter } from './data/grammarExt';
-import { ProgressState, Lesson, WordBreakdown, DialogueLine, GrammarNote, QuizQuestion, RegisteredUser, PurchaseOrder, Course, StoreItem, EBookVocabEntry, EBookSentenceEntry, EBookDialogueEntry, EBookConversationEntry } from './types';
-import { SAYAR_SON_JAI_BLUE_BOOK } from './data/sayarSonJaiBlueBook';
+import { ProgressState, Lesson, WordBreakdown, DialogueLine, GrammarNote, QuizQuestion, RegisteredUser, PurchaseOrder, Course, StoreItem, EBookVocabEntry, EBookSentenceEntry, EBookDialogueEntry, EBookConversationEntry, GrammarChapter, OrientationArticle, VocabCategory, VocabItem } from './types';
 import ProgressCard from './components/ProgressCard';
 import SentenceView from './components/SentenceView';
 import VocabularyView from './components/VocabularyView';
@@ -20,7 +14,6 @@ import { GrammarVocabDropdown } from './components/GrammarVocabDropdown';
 import SentenceStructureLesson from './components/SentenceStructureLesson';
 import { CheckoutGateway } from './components/CheckoutGateway';
 import { OrderDetailModal } from './components/OrderDetailModal';
-import { VOCAB_DATA, VocabCategory, VocabItem } from './data/vocab';
 import { EbookCard } from './components/EbookCard';
 import { LessonItem } from './components/LessonItem';
 import { AdminTableRow } from './components/AdminTableRow';
@@ -32,6 +25,202 @@ import SyncDashboard from './components/SyncDashboard';
 import { initAutoSync, syncCloudflareD1ToUserOfflineStorage, addSyncLog, loginUser, registerNewUser } from './utils/syncEngine';
 import { localDB } from './utils/db';
 import { getAuthValue, setAuthValue, removeAuthValue, getAuthValueSync } from './utils/authStorage';
+import { fetchLessonDetail } from './hooks/useApiData';
+import { playGlobalAudio, speakGlobalText, stopGlobalAudio } from './utils/audioManager';
+
+const formatGrammarExtMap = (rawList: any[]) => {
+  const map: Record<string | number, any> = {};
+  if (!Array.isArray(rawList)) return map;
+
+  for (const item of rawList) {
+    const chNum = Number(item.chapter_number || item.chapterNumber || 1);
+    let parsed = item.examples;
+    if (!parsed && item.examples_json) {
+      try {
+        parsed = typeof item.examples_json === 'string' ? JSON.parse(item.examples_json) : item.examples_json;
+      } catch (e) {
+        parsed = [];
+      }
+    }
+
+    let vocab: any[] = [];
+    let sentences: any[] = [];
+    let dialogue: any[] = [];
+    let conversation: any[] = [];
+    let examplesList: any[] = [];
+
+    if (Array.isArray(parsed)) {
+      vocab = parsed;
+      examplesList = parsed;
+    } else if (typeof parsed === 'object' && parsed !== null) {
+      vocab = parsed.vocab || [];
+      sentences = parsed.qa || parsed.sentences || [];
+      dialogue = parsed.dialogue || [];
+      conversation = parsed.conversation || [];
+      examplesList = parsed.examples || [];
+    }
+
+    const ruleItem = {
+      id: item.id || chNum,
+      chapterNumber: chNum,
+      chapter_number: chNum,
+      title: item.title || item.titleEnglish || item.title_english || `Chapter ${chNum}`,
+      title_myanmar: item.title_myanmar || item.titleMyanmar || item.title_mm || '',
+      explanation: item.explanation || '',
+      explanation_myanmar: item.explanation_myanmar || '',
+      vocab,
+      sentences,
+      qa: sentences,
+      dialogue,
+      conversation,
+      examples: examplesList,
+      examples_json: item.examples_json
+    };
+
+    if (!map[chNum]) {
+      map[chNum] = {
+        id: item.id || chNum,
+        chapterNumber: chNum,
+        chapter_number: chNum,
+        title: item.title || `Chapter ${chNum}`,
+        title_myanmar: item.title_myanmar || '',
+        explanation: item.explanation || '',
+        explanation_myanmar: item.explanation_myanmar || '',
+        vocab: [],
+        sentences: [],
+        qa: [],
+        dialogue: [],
+        conversation: [],
+        examples: [],
+        grammarList: []
+      };
+    }
+
+    map[chNum].grammarList.push(ruleItem);
+
+    if (vocab.length > 0) map[chNum].vocab.push(...vocab);
+    if (sentences.length > 0) {
+      map[chNum].sentences.push(...sentences);
+      map[chNum].qa.push(...sentences);
+    }
+    if (dialogue.length > 0) map[chNum].dialogue.push(...dialogue);
+    if (conversation.length > 0) map[chNum].conversation.push(...conversation);
+    if (examplesList.length > 0) map[chNum].examples.push(...examplesList);
+
+    map[String(chNum)] = map[chNum];
+    map[`chapter-${chNum}`] = map[chNum];
+    if (item.id) map[item.id] = map[chNum];
+  }
+  return map;
+};
+
+const getGrammarExtDataForChapter = (chapterId: any, titleEnglish?: string, titleMyanmar?: string, customMap?: any, allLessons?: any[]) => {
+  let numId = Number(chapterId);
+  if (isNaN(numId) && typeof chapterId === 'string') {
+    const match = chapterId.match(/\d+/);
+    if (match) numId = parseInt(match[0], 10);
+  }
+  if (isNaN(numId) || numId < 1) numId = 1;
+
+  let map = customMap || (window as any).__grammarExtMap;
+  if (!map) {
+    try {
+      const raw = localStorage.getItem('thai_grammar_ext_data');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          map = formatGrammarExtMap(parsed);
+          localStorage.setItem('thai_grammar_ext_data', JSON.stringify(map));
+          (window as any).__grammarExtMap = map;
+        } else if (parsed && typeof parsed === 'object') {
+          map = parsed;
+          (window as any).__grammarExtMap = map;
+        }
+      }
+    } catch {}
+  }
+
+  let data = map ? (map[chapterId] || map[numId] || map[String(numId)] || map[`chapter-${chapterId}`]) : null;
+
+  const fallbackLessons = allLessons || (window as any).__lessons || [];
+  const matchedLesson = fallbackLessons.find((l: any) => l?.id === numId || l?.id === chapterId || String(l?.id) === String(chapterId));
+
+  // 1. Vocab list
+  let vocab = (data && Array.isArray(data.vocab) && data.vocab.length > 0) ? [...data.vocab] : [];
+  if (vocab.length === 0 && matchedLesson && Array.isArray(matchedLesson.vocab) && matchedLesson.vocab.length > 0) {
+    vocab = [...matchedLesson.vocab];
+  }
+  if (vocab.length === 0 && data && Array.isArray(data.grammarList)) {
+    for (const rule of data.grammarList) {
+      if (Array.isArray(rule.examples) && rule.examples.length > 0) {
+        vocab.push(...rule.examples);
+      }
+    }
+  }
+
+  // 2. Grammar list
+  let grammarList = (data && Array.isArray(data.grammarList) && data.grammarList.length > 0) ? [...data.grammarList] : [];
+  if (grammarList.length === 0 && matchedLesson && Array.isArray(matchedLesson.grammarNotes) && matchedLesson.grammarNotes.length > 0) {
+    grammarList = [...matchedLesson.grammarNotes];
+  }
+
+  // 3. Dialogue list
+  let rawDialogueList = (data && Array.isArray(data.dialogueList) && data.dialogueList.length > 0) ? [...data.dialogueList] : [];
+  if (rawDialogueList.length === 0 && data && Array.isArray(data.dialogue) && data.dialogue.length > 0) {
+    rawDialogueList = [...data.dialogue];
+  }
+  if (rawDialogueList.length === 0 && matchedLesson && Array.isArray(matchedLesson.dialogue) && matchedLesson.dialogue.length > 0) {
+    rawDialogueList = [...matchedLesson.dialogue];
+  }
+
+  const dialogueList = rawDialogueList.filter((item: any, index: number, self: any[]) =>
+    index === self.findIndex((t: any) => {
+      const itemThai = item?.text_thai || item?.textThai || item?.thai || '';
+      const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+      return (
+        (t.id && item.id && String(t.id) === String(item.id)) ||
+        (tThai && itemThai && tThai === itemThai)
+      );
+    })
+  );
+
+  // 4. Conversation list
+  let rawConversationList = (data && Array.isArray(data.conversationList) && data.conversationList.length > 0) ? [...data.conversationList] : [];
+  if (rawConversationList.length === 0 && data && Array.isArray(data.conversation) && data.conversation.length > 0) {
+    rawConversationList = [...data.conversation];
+  }
+  if (rawConversationList.length === 0 && matchedLesson && Array.isArray(matchedLesson.conversation) && matchedLesson.conversation.length > 0) {
+    rawConversationList = [...matchedLesson.conversation];
+  }
+
+  const conversationList = rawConversationList.filter((turn: any, index: number, self: any[]) =>
+    index === self.findIndex((t: any) => {
+      const turnThai = turn?.text_thai || turn?.textThai || turn?.thai || '';
+      const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+      return (
+        (t.id && turn.id && String(t.id) === String(turn.id)) ||
+        (tThai && turnThai && tThai === turnThai)
+      );
+    })
+  );
+
+  return {
+    id: numId,
+    title: data?.title || titleEnglish || matchedLesson?.titleEnglish || `Chapter ${numId}`,
+    title_myanmar: data?.title_myanmar || titleMyanmar || matchedLesson?.titleMyanmar || '',
+    explanation: data?.explanation || matchedLesson?.description || '',
+    explanation_myanmar: data?.explanation_myanmar || matchedLesson?.descriptionMyanmar || '',
+    vocab,
+    sentences: data?.sentences || matchedLesson?.sentences || [],
+    qa: data?.qa || matchedLesson?.qa || [],
+    dialogue: dialogueList,
+    conversation: conversationList,
+    examples: data?.examples || [],
+    grammarList,
+    dialogueList,
+    conversationList
+  };
+};
 import { 
   BookOpen, 
   Award, 
@@ -112,6 +301,26 @@ const adjustHexBrightness = (hex: string, percent: number): string => {
 
   return `#${rHex}${gHex}${bHex}`;
 };
+
+export function sortLessonsNaturally<T extends { id?: string | number; title?: string; titleThai?: string; titleEnglish?: string; title_thai?: string; title_english?: string }>(lessons: T[]): T[] {
+  if (!Array.isArray(lessons)) return [];
+  return [...lessons].sort((a, b) => {
+    const aIdNum = Number(a.id);
+    const bIdNum = Number(b.id);
+    if (!isNaN(aIdNum) && !isNaN(bIdNum) && String(a.id ?? '').trim() !== '' && String(b.id ?? '').trim() !== '') {
+      return aIdNum - bIdNum;
+    }
+    const aMatch = String(a.id ?? '').match(/\d+/);
+    const bMatch = String(b.id ?? '').match(/\d+/);
+    if (aMatch && bMatch && String(a.id ?? '').toLowerCase().replace(/\d+/, '') === String(b.id ?? '').toLowerCase().replace(/\d+/, '')) {
+      return parseInt(aMatch[0], 10) - parseInt(bMatch[0], 10);
+    }
+    const aTitle = String(a.titleEnglish || a.title_english || a.title || a.titleThai || a.title_thai || a.id || '');
+    const bTitle = String(b.titleEnglish || b.title_english || b.title || b.titleThai || b.title_thai || b.id || '');
+    return aTitle.localeCompare(bTitle, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
 
 
 
@@ -362,6 +571,20 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
     } else if (key === 'vocab_categories' && Array.isArray(data)) {
       console.log(`Syncing vocabulary categories items to relational D1...`);
       for (const cat of data) {
+        // Sync category metadata first
+        await fetch('/api/vocab-categories', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            id: cat.id || cat.name,
+            name: cat.name,
+            name_myanmar: cat.nameMyanmar || cat.name,
+            description: cat.description || '',
+            icon: cat.icon || 'BookOpen',
+            cover_color: cat.coverColor || 'purple'
+          })
+        }).catch(err => console.warn("Failed to sync category metadata:", err));
+
         if (!cat.items || !Array.isArray(cat.items)) continue;
         for (const item of cat.items) {
           await fetch('/api/d1-admin-deploy', {
@@ -378,7 +601,8 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
               phonetic_mm: item.phoneticMm || item.phonetic_mm || "",
               category: cat.name || "general",
               audio_url: item.audio_url || item.url || null,
-              pdf_drive_url: item.pdf_drive_url || null
+              pdf_drive_url: item.pdf_drive_url || null,
+              illustration: item.illustration || item.cat_ill || null
             })
           });
         }
@@ -704,11 +928,164 @@ export default function App() {
 
   const syncedUserIdRef = useRef<string | null>(null);
 
+  const [grammarExtMap, setGrammarExtMap] = useState<Record<string | number, any>>(() => {
+    try {
+      const saved = localStorage.getItem('thai_grammar_ext_data');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return (window as any).__grammarExtMap || {};
+  });
+
   const [hasLoadedD1Data, setHasLoadedD1Data] = useState(false);
   const hasLoadedD1DataRef = useRef(false);
+
   useEffect(() => {
-    hasLoadedD1DataRef.current = hasLoadedD1Data;
-  }, [hasLoadedD1Data]);
+    fetch('/api/grammar')
+      .then(res => res.json())
+      .then((data: any) => {
+        if (data.success && Array.isArray(data.data)) {
+          const map = formatGrammarExtMap(data.data);
+          localStorage.setItem('thai_grammar_ext_data', JSON.stringify(map));
+          (window as any).__grammarExtMap = map;
+          setGrammarExtMap(map);
+
+          const uniqueChapterNumbers = Array.from(new Set(data.data.map((item: any) => item.chapter_number || item.chapterNumber || 1))).sort((a, b) => Number(a) - Number(b));
+          if (uniqueChapterNumbers.length > 0) {
+            const chaptersList = uniqueChapterNumbers.map((chNum) => {
+              const chapterData = map[chNum] || {};
+              return {
+                id: chNum,
+                titleEnglish: chapterData.title || `Chapter ${chNum}`,
+                titleMyanmar: chapterData.title_myanmar || '',
+                rules: chapterData.grammarList || []
+              };
+            });
+            setGrammarChapters(chaptersList);
+            localStorage.setItem('thai_grammar_chapters_curriculum_list', JSON.stringify(chaptersList));
+          }
+        }
+      })
+      .catch(err => console.warn("Notice: Initial grammar_ext fetch:", err));
+
+    fetch('/api/dialogue')
+      .then(res => res.json())
+      .then((data: any) => {
+        if (data.success && Array.isArray(data.data)) {
+          setGrammarExtMap(prev => {
+            const updated = { ...prev };
+            const chapterGroupMap = new Map<number, any[]>();
+            for (const item of data.data) {
+              const chNum = Number(item.chapter_number || item.chapterNumber || 1);
+              if (!chapterGroupMap.has(chNum)) chapterGroupMap.set(chNum, []);
+              chapterGroupMap.get(chNum)!.push(item);
+            }
+
+            for (const [chNumStr, items] of chapterGroupMap.entries()) {
+              const chNum = Number(chNumStr);
+              // Safe unique filter by ID or text_thai fallback
+              const uniqueItems = items.filter((item: any, index: number, self: any[]) =>
+                index === self.findIndex((t: any) => {
+                  const itemThai = item?.text_thai || item?.textThai || item?.thai || '';
+                  const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                  return (
+                    (t.id && item.id && String(t.id) === String(item.id)) ||
+                    (tThai && itemThai && tThai === itemThai)
+                  );
+                })
+              );
+
+              const existingChapter = updated[chNum] || {
+                id: chNum,
+                chapterNumber: chNum,
+                chapter_number: chNum,
+                title: `Chapter ${chNum}`,
+                vocab: [],
+                sentences: [],
+                qa: [],
+                dialogue: [],
+                conversation: [],
+                examples: [],
+                grammarList: [],
+                dialogueList: [],
+                conversationList: []
+              };
+
+              // Merge without destroying existing fields (title, vocab, grammarList)
+              updated[chNum] = {
+                ...existingChapter,
+                dialogueList: uniqueItems
+              };
+              updated[String(chNum)] = updated[chNum];
+              updated[`chapter-${chNum}`] = updated[chNum];
+            }
+
+            localStorage.setItem('thai_grammar_ext_data', JSON.stringify(updated));
+            (window as any).__grammarExtMap = updated;
+            return updated;
+          });
+        }
+      })
+      .catch(err => console.warn("Notice: Initial dialogue fetch:", err));
+
+    fetch('/api/conversation')
+      .then(res => res.json())
+      .then((data: any) => {
+        if (data.success && Array.isArray(data.data)) {
+          setGrammarExtMap(prev => {
+            const updated = { ...prev };
+            const chapterGroupMap = new Map<number, any[]>();
+            for (const item of data.data) {
+              const chNum = Number(item.chapter_number || item.chapterNumber || 1);
+              if (!chapterGroupMap.has(chNum)) chapterGroupMap.set(chNum, []);
+              chapterGroupMap.get(chNum)!.push(item);
+            }
+
+            for (const [chNumStr, items] of chapterGroupMap.entries()) {
+              const chNum = Number(chNumStr);
+              const uniqueItems = items.filter((item: any, index: number, self: any[]) =>
+                index === self.findIndex((t: any) => {
+                  const itemThai = item?.text_thai || item?.textThai || item?.thai || '';
+                  const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                  return (
+                    (t.id && item.id && String(t.id) === String(item.id)) ||
+                    (tThai && itemThai && tThai === itemThai)
+                  );
+                })
+              );
+
+              const existingChapter = updated[chNum] || {
+                id: chNum,
+                chapterNumber: chNum,
+                chapter_number: chNum,
+                title: `Chapter ${chNum}`,
+                vocab: [],
+                sentences: [],
+                qa: [],
+                dialogue: [],
+                conversation: [],
+                examples: [],
+                grammarList: [],
+                dialogueList: [],
+                conversationList: []
+              };
+
+              // Merge without destroying existing fields
+              updated[chNum] = {
+                ...existingChapter,
+                conversationList: uniqueItems
+              };
+              updated[String(chNum)] = updated[chNum];
+              updated[`chapter-${chNum}`] = updated[chNum];
+            }
+
+            localStorage.setItem('thai_grammar_ext_data', JSON.stringify(updated));
+            (window as any).__grammarExtMap = updated;
+            return updated;
+          });
+        }
+      })
+      .catch(err => console.warn("Notice: Initial conversation fetch:", err));
+  }, []);
 
   // Registered user profiles fetched live from D1 users_profile table
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>(() => {
@@ -786,10 +1163,12 @@ export default function App() {
         });
 
       if (!isCancelledRef?.current) {
-        setRegisteredUsers(mappedUsers);
-        try {
-          localStorage.setItem('thai_registered_users_list', JSON.stringify(mappedUsers));
-        } catch {}
+        if (mappedUsers.length > 0) {
+          setRegisteredUsers(mappedUsers);
+          try {
+            localStorage.setItem('thai_registered_users_list', JSON.stringify(mappedUsers));
+          } catch {}
+        }
         setD1UsersError(null);
       }
     } catch (err: any) {
@@ -916,8 +1295,14 @@ export default function App() {
     }
   };
 
+  const hasSyncedRef = useRef(false);
+
   useEffect(() => {
+    if (hasSyncedRef.current) return;
+    hasSyncedRef.current = true;
+
     initAutoSync();
+    const controller = new AbortController();
 
     const fetchDynamicDataAndSync = async () => {
       const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
@@ -925,25 +1310,49 @@ export default function App() {
       // Dedicated public API fetch for user lessons with required logging
       console.log("Fetching user lessons...");
       try {
-        const lessonsRes = await fetch(`${apiBase}/api/lessons`);
+        const lessonsRes = await fetch(`${apiBase}/api/lessons`, { signal: controller.signal });
         if (lessonsRes.ok) {
           const lessonsData: any = await lessonsRes.json();
           console.log("User lessons received:", lessonsData);
           if (lessonsData && lessonsData.success && Array.isArray(lessonsData.data) && lessonsData.data.length > 0) {
-            setLessons(lessonsData.data);
-            localStorage.setItem('thai_lessons_curriculum', JSON.stringify(lessonsData.data));
+            const sorted = sortLessonsNaturally(lessonsData.data);
+            setLessons(sorted);
+            localStorage.setItem('thai_lessons_curriculum', JSON.stringify(sorted));
           }
         } else {
           const errText = await lessonsRes.text().catch(() => '');
           console.error("Error fetching user lessons:", `HTTP ${lessonsRes.status}: ${lessonsRes.statusText || errText}`);
         }
       } catch (fetchErr: any) {
-        console.error("Error fetching user lessons:", fetchErr?.message || fetchErr);
+        if (fetchErr?.name !== 'AbortError') {
+          console.error("Error fetching user lessons:", fetchErr?.message || fetchErr);
+        }
+      }
+
+      // Dedicated public API fetch for user courses with required logging
+      console.log("Fetching user courses...");
+      try {
+        const coursesRes = await fetch(`${apiBase}/api/courses`, { signal: controller.signal });
+        if (coursesRes.ok) {
+          const coursesData: any = await coursesRes.json();
+          console.log("Fetched Data (Courses):", coursesData);
+          if (coursesData && coursesData.success && Array.isArray(coursesData.data) && coursesData.data.length > 0) {
+            setCourses(coursesData.data);
+            localStorage.setItem('thai_courses_curriculum', JSON.stringify(coursesData.data));
+          }
+        } else {
+          const errText = await coursesRes.text().catch(() => '');
+          console.error("Error fetching user courses:", `HTTP ${coursesRes.status}: ${coursesRes.statusText || errText}`);
+        }
+      } catch (coursesErr: any) {
+        if (coursesErr?.name !== 'AbortError') {
+          console.error("Error fetching user courses:", coursesErr?.message || coursesErr);
+        }
       }
 
       try {
         console.log("⚡ Fetching all dynamic datasets from Cloudflare D1...");
-        const response = await fetch(`${apiBase}/api/dynamic-data`);
+        const response = await fetch(`${apiBase}/api/dynamic-data`, { signal: controller.signal });
         if (response.ok) {
           const result: any = await response.json();
           if (result.success && result.data) {
@@ -954,26 +1363,28 @@ export default function App() {
               vocab_categories: d1Vocab,
               courses: d1Courses,
               pdf_vocabulary: d1PdfVocab,
-              grammar_ext: d1GrammarExt
+              grammar_ext: d1GrammarExt,
+              dialogue: d1Dialogue
             } = result.data;
             
             if (d1Lessons && Array.isArray(d1Lessons) && d1Lessons.length > 0) {
-              setLessons(d1Lessons);
-              localStorage.setItem('thai_lessons_curriculum', JSON.stringify(d1Lessons));
+              const sorted = sortLessonsNaturally(d1Lessons);
+              setLessons(sorted);
+              localStorage.setItem('thai_lessons_curriculum', JSON.stringify(sorted));
             }
-            if (d1Grammar) {
+            if (d1Grammar && Array.isArray(d1Grammar) && d1Grammar.length > 0) {
               setGrammarChapters(d1Grammar);
               localStorage.setItem('thai_grammar_chapters_curriculum_list', JSON.stringify(d1Grammar));
             }
-            if (d1Orientation) {
+            if (d1Orientation && Array.isArray(d1Orientation) && d1Orientation.length > 0) {
               setOrientationData(d1Orientation);
               localStorage.setItem('thai_orientation_articles_list', JSON.stringify(d1Orientation));
             }
-            if (d1Vocab) {
+            if (d1Vocab && Array.isArray(d1Vocab) && d1Vocab.length > 0) {
               setVocabBookCategories(d1Vocab);
               localStorage.setItem('thai_vocab_book_categories', JSON.stringify(d1Vocab));
             }
-            if (d1Courses) {
+            if (d1Courses && Array.isArray(d1Courses) && d1Courses.length > 0) {
               setCourses(d1Courses);
               localStorage.setItem('thai_courses_curriculum', JSON.stringify(d1Courses));
             }
@@ -981,17 +1392,131 @@ export default function App() {
               localStorage.setItem('thai_pdf_vocabulary', JSON.stringify(d1PdfVocab));
               window.dispatchEvent(new Event('thai_pdf_vocabulary_updated'));
             }
-            if (d1GrammarExt) {
-              localStorage.setItem('thai_grammar_ext_data', JSON.stringify(d1GrammarExt));
+            if (d1GrammarExt || d1Dialogue || d1Conversation) {
+              const rawExt = Array.isArray(d1GrammarExt) ? d1GrammarExt : [];
+              const rawDiag = Array.isArray(d1Dialogue) ? d1Dialogue : [];
+              const rawConv = Array.isArray(d1Conversation) ? d1Conversation : [];
+              const map = formatGrammarExtMap(rawExt);
+
+              if (rawDiag.length > 0) {
+                const chapterDiagMap = new Map<number, any[]>();
+                for (const item of rawDiag) {
+                  const chNum = Number(item.chapter_number || item.chapterNumber || 1);
+                  if (!chapterDiagMap.has(chNum)) chapterDiagMap.set(chNum, []);
+                  chapterDiagMap.get(chNum)!.push(item);
+                }
+                for (const [chNum, items] of chapterDiagMap.entries()) {
+                  const uniqueDiag = items.filter((item: any, index: number, self: any[]) =>
+                    index === self.findIndex((t: any) => {
+                      const itemThai = item?.text_thai || item?.textThai || item?.thai || '';
+                      const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                      return (
+                        (t.id && item.id && String(t.id) === String(item.id)) ||
+                        (tThai && itemThai && tThai === itemThai)
+                      );
+                    })
+                  );
+
+                  const existingChapter = map[chNum] || {
+                    id: chNum,
+                    chapterNumber: chNum,
+                    chapter_number: chNum,
+                    title: `Chapter ${chNum}`,
+                    vocab: [],
+                    sentences: [],
+                    qa: [],
+                    dialogue: [],
+                    conversation: [],
+                    examples: [],
+                    grammarList: [],
+                    dialogueList: [],
+                    conversationList: []
+                  };
+
+                  map[chNum] = {
+                    ...existingChapter,
+                    dialogueList: uniqueDiag
+                  };
+                  map[String(chNum)] = map[chNum];
+                  map[`chapter-${chNum}`] = map[chNum];
+                }
+              }
+
+              if (rawConv.length > 0) {
+                const chapterConvMap = new Map<number, any[]>();
+                for (const item of rawConv) {
+                  const chNum = Number(item.chapter_number || item.chapterNumber || 1);
+                  if (!chapterConvMap.has(chNum)) chapterConvMap.set(chNum, []);
+                  chapterConvMap.get(chNum)!.push(item);
+                }
+                for (const [chNum, items] of chapterConvMap.entries()) {
+                  const uniqueConv = items.filter((item: any, index: number, self: any[]) =>
+                    index === self.findIndex((t: any) => {
+                      const turnThai = item?.text_thai || item?.textThai || item?.thai || '';
+                      const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                      return (
+                        (t.id && item.id && String(t.id) === String(item.id)) ||
+                        (tThai && turnThai && tThai === turnThai)
+                      );
+                    })
+                  );
+
+                  const existingChapter = map[chNum] || {
+                    id: chNum,
+                    chapterNumber: chNum,
+                    chapter_number: chNum,
+                    title: `Chapter ${chNum}`,
+                    vocab: [],
+                    sentences: [],
+                    qa: [],
+                    dialogue: [],
+                    conversation: [],
+                    examples: [],
+                    grammarList: [],
+                    dialogueList: [],
+                    conversationList: []
+                  };
+
+                  map[chNum] = {
+                    ...existingChapter,
+                    conversationList: uniqueConv
+                  };
+                  map[String(chNum)] = map[chNum];
+                  map[`chapter-${chNum}`] = map[chNum];
+                }
+              }
+
+              localStorage.setItem('thai_grammar_ext_data', JSON.stringify(map));
+              (window as any).__grammarExtMap = map;
+              setGrammarExtMap(map);
               window.dispatchEvent(new Event('thai_grammar_ext_updated'));
+
+              if (rawExt.length > 0) {
+                const uniqueChapterNumbers = Array.from(new Set(rawExt.map((item: any) => item.chapter_number || item.chapterNumber || 1))).sort((a: any, b: any) => Number(a) - Number(b));
+                const chaptersList = uniqueChapterNumbers.map((chNum) => {
+                  const chapterData = map[chNum] || {};
+                  return {
+                    id: chNum,
+                    titleEnglish: chapterData.title || `Chapter ${chNum}`,
+                    titleMyanmar: chapterData.title_myanmar || '',
+                    rules: chapterData.grammarList || []
+                  };
+                });
+                setGrammarChapters(chaptersList);
+                localStorage.setItem('thai_grammar_chapters_curriculum_list', JSON.stringify(chaptersList));
+              }
             }
             console.log("✅ Successfully synced Cloudflare D1 dynamic data to local state.");
           }
         }
-      } catch (err) {
-        console.error("Failed to fetch dynamic D1 app data:", err);
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          console.error("Failed to fetch dynamic D1 app data:", err);
+        }
       } finally {
-        setHasLoadedD1Data(true);
+        if (!controller.signal.aborted) {
+          setHasLoadedD1Data(true);
+        }
       }
 
       try {
@@ -1003,104 +1528,30 @@ export default function App() {
     };
 
     fetchDynamicDataAndSync();
+
+    return () => {
+      controller.abort();
+    };
   }, []);
 
   const [lessons, setLessonsState] = useState<Lesson[]>(() => {
     const saved = localStorage.getItem('thai_lessons_curriculum');
-    let baseLessons = lessonsData;
-    
-    // Process base lessons to distribute across courses and inject premium dialogue learning videos
-    const mappedInitialLessons = baseLessons.map((lesson) => {
-      let courseId = lesson.courseId || 'course-basic';
-      if (lesson.id <= 32) {
-        courseId = 'course-basic';
-      } else if (lesson.id >= 33) {
-        courseId = 'course-business';
-      }
-
-      let wholeDialogueVideoUrl: string | undefined = undefined;
-      let dialogue = lesson.dialogue;
-
-      if (courseId === 'course-business') {
-        if (lesson.id <= 15) {
-          // Case: One full video for the whole dialogue practice in this lesson
-          const ytUrls = [
-            "https://www.youtube.com/embed/nU2U3B4X2S0",
-            "https://www.youtube.com/embed/H7c2n-M8-3E",
-            "https://www.youtube.com/embed/SOf-hVsc_yU",
-            "https://www.youtube.com/embed/mK9k2tY6SVE",
-            "https://www.youtube.com/embed/T6WkCOx4-R8"
-          ];
-          wholeDialogueVideoUrl = ytUrls[(lesson.id - 11) % ytUrls.length];
-        } else {
-          // Case: Speaker A video and Speaker B video for each dialogue line
-          dialogue = lesson.dialogue.map((line, lineIdx) => {
-            const isSpeakerA = line.speaker.includes('A');
-            // Premium mixkit stock video clips depicting clear close-up speaking loops for native practice
-            const speakerAVideo = "https://assets.mixkit.co/videos/preview/mixkit-woman-explaining-something-during-a-video-call-40030-large.mp4";
-            const speakerBVideo = "https://assets.mixkit.co/videos/preview/mixkit-young-man-having-a-web-conference-40031-large.mp4";
-            return {
-              ...line,
-              videoUrl: isSpeakerA ? speakerAVideo : speakerBVideo
-            };
-          });
-        }
-      } else if (courseId === 'course-workspace') {
-        // Also inject a full video for some workplace lessons
-        const ytUrls = [
-          "https://www.youtube.com/embed/sRLO4p_rDss",
-          "https://www.youtube.com/embed/YnIdVscH_cE"
-        ];
-        wholeDialogueVideoUrl = ytUrls[(lesson.id - 21) % ytUrls.length];
-      }
-
-      return {
-        ...lesson,
-        courseId,
-        dialogue,
-        wholeDialogueVideoUrl
-      };
-    });
-
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        // Merge mapped properties if saved lines lack courseId or video fields
-        return parsed.map((savedL: any) => {
-          const matched = mappedInitialLessons.find(m => m.id === savedL.id);
-          if (matched) {
-            return {
-              ...matched,
-              ...savedL,
-              // Keep matched video fields & courseId if they aren't configured in saved
-              courseId: savedL.courseId || matched.courseId,
-              dialogue: savedL.dialogue && savedL.dialogue.length > 0
-                ? savedL.dialogue.map((line: any, idx: number) => ({
-                    ...matched.dialogue[idx],
-                    ...line,
-                    videoUrl: line.videoUrl || matched.dialogue[idx]?.videoUrl
-                  }))
-                : matched.dialogue,
-              wholeDialogueVideoUrl: savedL.wholeDialogueVideoUrl || matched.wholeDialogueVideoUrl
-            };
-          }
-          return savedL;
-        });
+        return sortLessonsNaturally(JSON.parse(saved));
       } catch (e) {
         console.error("Error parsing saved lessons:", e);
       }
     }
-    return mappedInitialLessons;
+    return [];
   });
 
   const setLessons = (val: Lesson[] | ((prev: Lesson[]) => Lesson[])) => {
     setLessonsState(prev => {
-      const next = typeof val === 'function' ? (val as Function)(prev) : val;
+      const rawNext = typeof val === 'function' ? (val as Function)(prev) : val;
+      const next = sortLessonsNaturally(rawNext);
       setTimeout(() => {
         localStorage.setItem('thai_lessons_curriculum', JSON.stringify(next));
-        if (hasLoadedD1DataRef.current) {
-          saveDynamicDataToD1('lessons', next);
-        }
       }, 0);
       return next;
     });
@@ -1115,7 +1566,7 @@ export default function App() {
         console.error("Error parsing saved grammar chapters:", e);
       }
     }
-    return initialGrammarChapters;
+    return [];
   });
 
   const [orientationData, setOrientationData] = useState<OrientationArticle[]>(() => {
@@ -1127,71 +1578,19 @@ export default function App() {
         console.error("Error parsing saved orientation articles:", e);
       }
     }
-    return initialOrientationData;
+    return [];
   });
 
   const [courses, setCoursesState] = useState<Course[]>(() => {
     const saved = localStorage.getItem('thai_courses_curriculum');
-    let initialList: Course[] = [
-      {
-        id: "course-basic",
-        name: "Complete Thai Foundational Mastery Course",
-        nameMm: "ထိုင်းစကားပြောနှင့် စာရေးစာဖတ် အခြေခံအထူးတန်းသင်တန်း",
-        priceAmount: 35000,
-        currency: "MMK" as const,
-        duration: "6 Weeks (Self-paced Interactive Training)",
-        description: "Perfect for complete beginners. Cover Thai phonetic consonants, low/mid/high class letters, compound vowels, and tone rules with native audio worksheets.",
-        descriptionMm: "ထိုင်းအက္ခရာ လုံးချင်းအသံထွက်များ၊ သရတွဲများနှင့် အသံနိမ့်မြင့်သင်္ကေတစည်းမျဉ်းများကို စနစ်တကျ သင်ယူလေ့လာနိုင်မည့် အခြေခံအထူးတန်း။",
-        instructor: "Kru Jane (Experienced Native Tutor)",
-        resources: [
-          {
-            id: "res-basic-grammar",
-            name: "Complete Thai Tones & Grammar Pocket Guide",
-            nameMm: "ထိုင်းအသံမြှင့်စနစ်နှင့် အဓိကသဒ္ဒါစည်းမျဉ်း အိတ်ဆောင်လက်စွဲ",
-            downloadUrl: "https://drive.google.com/open?id=demo_thai_tones",
-            priceAmount: 4500,
-            currency: 'MMK'
-          }
-        ]
-      },
-      {
-        id: "course-business",
-        name: "Advanced Business Thai Speaking & Letters Course",
-        nameMm: "အလုပ်အကိုင်နှင့် စီးပွားရေးသုံး အဆင့်မြင့် ထိုင်းစကားပြောသင်တန်း",
-        priceAmount: 65000,
-        currency: "MMK" as const,
-        duration: "8 Weeks (Structured Learning Tracks)",
-        description: "Best for career professionals, translators, and cross-border business seekers. Master professional business email drafts, complex negotiation terms, formal speech patterns, and custom terminology.",
-        descriptionMm: "စီးပွားရေးညှိနှိုင်းမှုများ၊ ရုံးသုံးစာပေးစာယူများ၊ အင်တာဗျူးပုံစံများနှင့် လုပ်ငန်းခွင်သုံး စကားပြောအဆင့်မြင့်စကားလုံးများကို ကျွမ်းကျင်စွာ ပြောဆိုရေးသားနိုင်ရန် အထူးသင်ရိုး။",
-        instructor: "Kru Jane & Sayar Thura",
-        resources: []
-      },
-      {
-        id: "course-workspace",
-        name: "Workspace & Professional Thai Learning Course",
-        nameMm: "လုပ်ငန်းခွင်သုံး ထိုင်းစကားပြောနှင့် လက်တွေ့အသုံးချသင်တန်း",
-        priceAmount: 45000,
-        currency: "MMK" as const,
-        duration: "6 Weeks (Self-paced Job-Oriented Training)",
-        description: "Master workplace communication, technical operations terminology, factory shift dialogues, and HR speech formulas for working in Thailand comfortably.",
-        descriptionMm: "ထိုင်းနိုင်ငံအတွင်း အလုပ်လုပ်ကိုင်နေသူများ၊ စက်ရုံ/အလုပ်ရုံတန်းများ၊ ရုံးဝန်ထမ်းများနှင့် အရောင်းကိုယ်စားလှယ်များအတွက် လက်တွေ့လုပ်ငန်းခွင်သုံး အထူးပြုပြောဆိုနည်းများ။",
-        instructor: "Kru Jane & Sayar Thura",
-        resources: []
-      }
-    ];
-
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as Course[];
-        return parsed.map(course => ({
-          ...course,
-          resources: (course.resources || []).filter((r: any) => r.id === "res-basic-grammar")
-        }));
+        return JSON.parse(saved) as Course[];
       } catch (e) {
         console.error("Error parsing saved courses:", e);
       }
     }
-    return initialList;
+    return [];
   });
 
   const setCourses = (val: Course[] | ((prev: Course[]) => Course[])) => {
@@ -1199,9 +1598,6 @@ export default function App() {
       const next = typeof val === 'function' ? (val as Function)(prev) : val;
       setTimeout(() => {
         localStorage.setItem('thai_courses_curriculum', JSON.stringify(next));
-        if (hasLoadedD1DataRef.current) {
-          saveDynamicDataToD1('courses', next);
-        }
       }, 0);
       return next;
     });
@@ -1294,7 +1690,7 @@ export default function App() {
         console.error("Error parsing saved vocab book categories:", e);
       }
     }
-    return VOCAB_DATA;
+    return [];
   });
 
   const handleSaveVocabBookCategories = (updatedCats: VocabCategory[]) => {
@@ -1744,12 +2140,26 @@ export default function App() {
   const [progress, setProgress] = useState<ProgressState>(INITIAL_PROGRESS);
   const [activeLessonId, setActiveLessonId] = useState<number | string | null>(null);
 
-  const handleLessonClick = useCallback((lessonId: string) => {
+  useEffect(() => {
+    if (adminSelectedLessonId) {
+      fetchLessonDetail(adminSelectedLessonId).then(detailed => {
+        if (detailed) {
+          setLessons(prev => prev.map(l => String(l.id) === String(adminSelectedLessonId) ? { ...l, ...detailed } : l));
+        }
+      });
+    }
+  }, [adminSelectedLessonId]);
+
+  const handleLessonClick = useCallback(async (lessonId: string) => {
     startTransition(() => {
       setActiveLessonId(lessonId);
       setActiveTab('vocabulary');
       setCurrentGrammarPageIndex(0);
     });
+    const detailed = await fetchLessonDetail(lessonId);
+    if (detailed) {
+      setLessons(prev => prev.map(l => String(l.id) === String(lessonId) ? { ...l, ...detailed } : l));
+    }
   }, []);
 
   const handleCourseTabChange = useCallback((courseId: string) => {
@@ -1862,6 +2272,72 @@ export default function App() {
   useEffect(() => {
     setCurrentHandbookExamplePage(0);
   }, [expandedChapterRuleIndex, handbookSubPageIndex, activeChapterId]);
+
+  useEffect(() => {
+    if (activeChapterId != null) {
+      const chNum = Number(activeChapterId) || 1;
+      fetch(`/api/chapter-details?chapterNumber=${chNum}`)
+        .then(res => res.json())
+        .then((data: any) => {
+          if (data.success) {
+            setGrammarExtMap(prev => {
+              const updated = { ...prev };
+              if (!updated[chNum]) {
+                updated[chNum] = {
+                  id: chNum,
+                  chapterNumber: chNum,
+                  chapter_number: chNum,
+                  title: `Chapter ${chNum}`,
+                  vocab: [],
+                  sentences: [],
+                  qa: [],
+                  dialogue: [],
+                  conversation: [],
+                  examples: [],
+                  grammarList: [],
+                  dialogueList: [],
+                  conversationList: []
+                };
+              }
+
+              if (Array.isArray(data.dialogues) && data.dialogues.length > 0) {
+                const uniqueDiag = data.dialogues.filter((item: any, index: number, self: any[]) =>
+                  index === self.findIndex((t: any) => {
+                    const itemThai = item?.text_thai || item?.textThai || item?.thai || '';
+                    const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                    return (
+                      (t.id && item.id && String(t.id) === String(item.id)) ||
+                      (tThai && itemThai && tThai === itemThai)
+                    );
+                  })
+                );
+                updated[chNum].dialogueList = uniqueDiag;
+              }
+              if (Array.isArray(data.conversations) && data.conversations.length > 0) {
+                const uniqueConv = data.conversations.filter((item: any, index: number, self: any[]) =>
+                  index === self.findIndex((t: any) => {
+                    const turnThai = item?.text_thai || item?.textThai || item?.thai || '';
+                    const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                    return (
+                      (t.id && item.id && String(t.id) === String(item.id)) ||
+                      (tThai && turnThai && tThai === turnThai)
+                    );
+                  })
+                );
+                updated[chNum].conversationList = uniqueConv;
+              }
+
+              updated[String(chNum)] = updated[chNum];
+              updated[`chapter-${chNum}`] = updated[chNum];
+              localStorage.setItem('thai_grammar_ext_data', JSON.stringify(updated));
+              (window as any).__grammarExtMap = updated;
+              return updated;
+            });
+          }
+        })
+        .catch(err => console.warn("Notice: chapter-details fetch:", err));
+    }
+  }, [activeChapterId]);
   const [activeHandbookSubTab, setActiveHandbookSubTab] = useState<'vocab' | 'grammar' | 'dialogue' | 'conversation'>('vocab');
   const [expandedGrammarSection, setExpandedGrammarSection] = useState<'vocab' | 'sentence' | 'qa' | 'conversation' | null>(null);
   const [exampleModeForRules, setExampleModeForRules] = useState<{[key: string]: 'standard' | 'more' | 'formal' | 'casual'}>({});
@@ -2157,39 +2633,24 @@ export default function App() {
   // Simple Notification banner dismiss
   const [showBroadcastBanner, setShowBroadcastBanner] = useState<boolean>(true);
 
-  // Lifecycle log on every state update / re-render
-  useEffect(() => {
-    console.log("[Admin User List] Component re-rendered, current state count:", registeredUsers.length, registeredUsers);
-  }, [registeredUsers]);
-
   useEffect(() => {
     const isCancelledRef = { current: false };
-    fetchD1Users(isCancelledRef);
+    fetchD1Users(true, isCancelledRef);
 
-    // Real-time polling every 2.5 seconds for live sign-up & profile updates in Admin Dashboard
-    const pollInterval = setInterval(() => {
-      if (!isCancelledRef.current) {
-        fetchD1Users(isCancelledRef);
-      }
-    }, 2500);
-
-    // Custom event listener for instant update on user sign-up / profile sync
     const handleUserSynced = () => {
       if (!isCancelledRef.current) {
-        console.log("[Admin Real-Time] Live profile sync event detected, refreshing D1 user list...");
-        fetchD1Users(isCancelledRef);
+        fetchD1Users(true, isCancelledRef);
       }
     };
     window.addEventListener('sirithai_user_synced', handleUserSynced);
 
     return () => {
       isCancelledRef.current = true;
-      clearInterval(pollInterval);
       window.removeEventListener('sirithai_user_synced', handleUserSynced);
     };
-  }, [fetchD1Users, adminHubTab]);
+  }, [adminHubTab]);
 
-  // Global Sync Trigger for User Profile to D1
+  // Global Sync Trigger for User Profile to D1 (triggers only when logged in user changes)
   useEffect(() => {
     if (currentUser) {
       const userProfile = registeredUsers.find(u => (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase());
@@ -2207,7 +2668,7 @@ export default function App() {
         }).catch(err => console.warn('User profile sync failed:', err));
       }
     }
-  }, [currentUser, registeredUsers]);
+  }, [currentUser]);
 
 
   // Purchase orders list state
@@ -2526,42 +2987,7 @@ export default function App() {
     ];
   });
 
-  // Global track clicks and active session duration (35 seconds OR 8 clicks trigger the auth invite)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeOnPage((prev) => {
-        const nextTime = prev + 1;
-        if (!isLoggedIn && !hasDismissedPromo && !showAuthModal) {
-          if (nextTime >= 35) {
-            navigate('/sign-up');
-          }
-        }
-        return nextTime;
-      });
-    }, 1000);
 
-    const handleWindowClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) {
-        setClickCount((prev) => {
-          const nextCount = prev + 1;
-          if (!isLoggedIn && !hasDismissedPromo && !showAuthModal) {
-            if (nextCount >= 8) {
-              navigate('/sign-up');
-            }
-          }
-          return nextCount;
-        });
-      }
-    };
-
-    window.addEventListener('click', handleWindowClick);
-
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('click', handleWindowClick);
-    };
-  }, [isLoggedIn, hasDismissedPromo, showAuthModal]);
 
   // Load progress from localStorage
   useEffect(() => {
@@ -2819,7 +3245,7 @@ startxref
         console.error(e);
       }
     }
-    return pdfVocabulary[lessonId] || [];
+    return [];
   };
 
   const saveCurriculumToD1 = async (table: string, payload: any): Promise<boolean> => {
@@ -3512,9 +3938,9 @@ startxref
   // Compile all words from all lessons for the master dictionary grid
   const allMasterVocab: WordBreakdown[] = Object.values(
     lessons.reduce((acc: { [key: string]: WordBreakdown }, lesson) => {
-      lesson.dialogue.forEach((line) => {
-        line.words.forEach((word) => {
-          if (!acc[word.thai]) {
+      (lesson.dialogue || []).forEach((line) => {
+        (line.words || []).forEach((word) => {
+          if (word && word.thai && !acc[word.thai]) {
             acc[word.thai] = word;
           }
         });
@@ -3601,15 +4027,11 @@ startxref
 
       if (match && (match.audio_blob || match.audio_url)) {
         const audioUrl = match.audio_blob ? URL.createObjectURL(match.audio_blob) : match.audio_url!;
-        const audio = new Audio(audioUrl);
-        
-        const rates = [1.0, 0.85, 0.7];
-        audio.playbackRate = rates[nextIndex];
-        
-        audio.play().catch(err => {
-          console.warn("Audio play failed, falling back to TTS:", err);
-          runTTS(text, nextIndex);
-        });
+        const audio = playGlobalAudio(audioUrl);
+        if (audio) {
+          const rates = [1.0, 0.85, 0.7];
+          audio.playbackRate = rates[nextIndex];
+        }
         return;
       }
     } catch (e) {
@@ -3619,14 +4041,9 @@ startxref
   };
 
   const runTTS = (text: string, nextIndex: number) => {
-    if (!('speechSynthesis' in window)) return;
     const rates = [0.85, 0.7, 0.5];
     const rate = rates[nextIndex];
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'th-TH';
-    utterance.rate = rate;
-    window.speechSynthesis.speak(utterance);
+    speakGlobalText(text, 'th-TH', rate);
   };
 
   const getAdditionalPhrases = (chapterId: number, ruleIdx: number, mode: 'standard' | 'more' | 'formal' | 'casual'): { thai: string; phonetic: string; english: string; myanmar: string }[] => {
@@ -3898,11 +4315,50 @@ startxref
     );
   };
 
+  const DEFAULT_COURSES: Course[] = [
+    {
+      id: "course-basic",
+      name: "Complete Thai Foundational Mastery Course",
+      nameMm: "ထိုင်းစကားပြောနှင့် စာရေးစာဖတ် အခြေခံအထူးတန်းသင်တန်း",
+      priceAmount: 35000,
+      currency: "MMK",
+      duration: "6 Weeks",
+      description: "Perfect for complete beginners. Cover Thai phonetic consonants, low/mid/high class letters, compound vowels, and tone rules.",
+      descriptionMm: "ထိုင်းအက္ခရာ လုံးချင်းအသံထွက်များ၊ သရတွဲများနှင့် အသံနိမ့်မြင့်သင်္ကေတစည်းမျဉ်းများကို စနစ်တကျ သင်ယူလေ့လာနိုင်မည့် အခြေခံအထူးတန်း။",
+      instructor: "Kru Jane",
+      resources: []
+    },
+    {
+      id: "course-business",
+      name: "Advanced Business Thai Speaking & Letters Course",
+      nameMm: "အလုပ်အကိုင်နှင့် စီးပွားရေးသုံး အဆင့်မြင့် ထိုင်းစကားပြောသင်တန်း",
+      priceAmount: 65000,
+      currency: "MMK",
+      duration: "8 Weeks",
+      description: "Best for career professionals, translators, and cross-border business seekers.",
+      descriptionMm: "စီးပွားရေးညှိနှိုင်းမှုများ၊ ရုံးသုံးစာပေးစာယူများ၊ အင်တာဗျူးပုံစံများနှင့် လုပ်ငန်းခွင်သုံး စကားပြောအဆင့်မြင့်စကားလုံးများ။",
+      instructor: "Kru Jane & Sayar Thura",
+      resources: []
+    },
+    {
+      id: "course-workspace",
+      name: "Workspace & Professional Thai Learning Course",
+      nameMm: "လုပ်ငန်းခွင်သုံး ထိုင်းစကားပြောနှင့် လက်တွေ့အသုံးချသင်တန်း",
+      priceAmount: 45000,
+      currency: "MMK",
+      duration: "6 Weeks",
+      description: "Master workplace communication, technical operations terminology, and factory shift dialogues.",
+      descriptionMm: "ထိုင်းနိုင်ငံအတွင်း အလုပ်လုပ်ကိုင်နေသူများ၊ စက်ရုံ/အလုပ်ရုံတန်းများ၊ ရုံးဝန်ထမ်းများနှင့် အရောင်းကိုယ်စားလှယ်များအတွက် လက်တွေ့လုပ်ငန်းခွင်သုံး။",
+      instructor: "Kru Jane & Sayar Thura",
+      resources: []
+    }
+  ];
+
   const getSortedCourses = () => {
-    if (!courses || !Array.isArray(courses)) return [];
-    const hasPremiumUnlocked = courses.some(c => c?.id !== 'course-basic' && isCourseUnlocked(c?.id || ''));
+    const list = (courses && Array.isArray(courses) && courses.length > 0) ? courses : DEFAULT_COURSES;
+    const hasPremiumUnlocked = list.some(c => c?.id !== 'course-basic' && isCourseUnlocked(c?.id || ''));
     if (hasPremiumUnlocked) {
-      return [...courses].sort((a, b) => {
+      return [...list].sort((a, b) => {
         const aUnlocked = a?.id !== 'course-basic' && isCourseUnlocked(a?.id || '');
         const bUnlocked = b?.id !== 'course-basic' && isCourseUnlocked(b?.id || '');
         if (aUnlocked && !bUnlocked) return -1;
@@ -3912,7 +4368,7 @@ startxref
         return 0;
       });
     } else {
-      return [...courses].sort((a, b) => {
+      return [...list].sort((a, b) => {
         if (a?.id === 'course-basic' && b?.id !== 'course-basic') return -1;
         if (a?.id !== 'course-basic' && b?.id === 'course-basic') return 1;
         return 0;
@@ -3948,11 +4404,7 @@ startxref
 
       if (match && (match.audio_blob || match.audio_url)) {
         const audioUrl = match.audio_blob ? URL.createObjectURL(match.audio_blob) : match.audio_url!;
-        const audio = new Audio(audioUrl);
-        audio.play().catch(err => {
-          console.warn("Audio play failed, falling back to TTS:", err);
-          runThaiTTS(thaiText);
-        });
+        playGlobalAudio(audioUrl);
         return;
       }
     } catch (e) {
@@ -3962,21 +4414,10 @@ startxref
   };
 
   const runThaiTTS = (thaiText: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const cleanedText = thaiText.replace(/\s*ครับ\/ค่ะ\s*/g, ' ครับ')
-                                  .replace(/\s*ครับ\s*/g, ' ครับ')
-                                  .replace(/\s*ค่ะ\s*/g, '  ค่ะ');
-      const utterance = new SpeechSynthesisUtterance(cleanedText);
-      utterance.lang = 'th-TH';
-      const voices = window.speechSynthesis.getVoices();
-      const thaiVoice = voices.find(v => v.lang.includes('th') || v.lang.includes('TH'));
-      if (thaiVoice) {
-        utterance.voice = thaiVoice;
-      }
-      utterance.rate = 0.85;
-      window.speechSynthesis.speak(utterance);
-    }
+    const cleanedText = thaiText.replace(/\s*ครับ\/ค่ะ\s*/g, ' ครับ')
+                                .replace(/\s*ครับ\s*/g, ' ครับ')
+                                .replace(/\s*ค่ะ\s*/g, '  ค่ะ');
+    speakGlobalText(cleanedText, 'th-TH', 0.85);
   };
 
   const activeCourse = courses.find(c => c.id === selectedCourseTab);
@@ -3986,6 +4427,7 @@ startxref
   if (courseLessons.length === 0 && lessons.length > 0) {
     courseLessons = lessons;
   }
+  courseLessons = sortLessonsNaturally(courseLessons);
 
   const lessonsPerPage = 6;
   const totalLessons = courseLessons.length;
@@ -5388,12 +5830,12 @@ startxref
                   </div>
 
                   <div className="space-y-2.5">
-                    {orientationData.map((article) => {
-                      const isActive = article.id === activeOrientationId;
+                    {(orientationData || []).map((article) => {
+                      const isActive = article?.id === activeOrientationId;
                       return (
                         <button
-                          key={article.id}
-                          onClick={() => setActiveOrientationId(article.id)}
+                          key={article?.id}
+                          onClick={() => setActiveOrientationId(article?.id)}
                           className={`w-full text-left p-4 rounded-2xl border-2 flex items-center gap-3.5 transition-all text-xs outline-none ${
                             isActive
                               ? 'bg-brand-purple text-white border-brand-purple border-b-4 border-brand-purple-shadow'
@@ -5402,7 +5844,7 @@ startxref
                         >
                           <div className="min-w-0 flex-1">
                             <div className={`font-sans font-black leading-tight text-sm ${isActive ? 'text-white' : 'text-[#3c3c3c]'}`}>
-                              {article.titleEnglish}
+                              {article?.titleEnglish}
                             </div>
                           </div>
                           <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'translate-x-0.5 text-white' : 'text-gray-300'}`} />
@@ -5415,7 +5857,9 @@ startxref
                 {/* Right Area Article details panel */}
                 <div className="lg:col-span-3 space-y-6">
                   {(() => {
-                    const article = orientationData.find(a => a.id === activeOrientationId) || orientationData[0];
+                    const article = (orientationData || []).find(a => a?.id === activeOrientationId) || orientationData?.[0];
+                    if (!article) return <div className="p-6 bg-white rounded-2xl text-xs font-bold text-brand-muted">No orientation data available.</div>;
+
                     return (
                       <>
                         {/* Article Welcome Card */}
@@ -5430,7 +5874,7 @@ startxref
 
                         {/* Article Sections */}
                         <div className="space-y-6">
-                          {article.sections.map((section, secIdx) => (
+                          {(article.sections || []).map((section, secIdx) => (
                             <motion.div
                               key={secIdx}
                               className="duo-card p-6 bg-white border-2 border-gray-100"
@@ -5439,27 +5883,27 @@ startxref
                               transition={{ delay: secIdx * 0.05 }}
                             >
                               <h4 className="font-sans font-black text-brand-purple text-base mb-2">
-                                {section.headingEnglish}
+                                {section?.headingEnglish}
                               </h4>
                               <h5 className="font-sans font-black text-brand-muted text-xs mb-4">
-                                {section.headingMyanmar}
+                                {section?.headingMyanmar}
                               </h5>
                               <div className="space-y-4">
-                                {section.paragraphs.map((p, pIdx) => (
+                                {(section?.paragraphs || []).map((p, pIdx) => (
                                   <div key={pIdx} className="space-y-1">
                                     <p className="text-xs sm:text-sm text-brand-dark font-sans leading-relaxed font-semibold">
-                                      {p.en}
+                                      {p?.en}
                                     </p>
                                     <p className="text-xs sm:text-sm text-brand-muted font-sans leading-relaxed italic border-l-4 border-brand-purple/20 pl-3 font-semibold whitespace-pre-line">
-                                      {p.mm}
+                                      {p?.mm}
                                     </p>
                                   </div>
                                 ))}
                               </div>
 
-                              {section.highlights && section.highlights.length > 0 && (
+                              {section?.highlights && section.highlights.length > 0 && (
                                 <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {section.highlights.map((hl, hlIdx) => (
+                                  {(section.highlights || []).map((hl, hlIdx) => (
                                     <div key={hlIdx} className="p-3.5 bg-brand-light/50 border border-gray-200 rounded-xl flex items-center justify-between gap-3.5 hover:border-brand-purple/30 transition-all shadow-3xs">
                                       <div className="min-w-0 flex-1">
                                         <div className="font-sans font-bold text-xs flex items-center flex-wrap gap-1">
@@ -5513,13 +5957,18 @@ startxref
                   </div>
 
                   <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
-                    {grammarChapters.map((ch) => {
-                      const isActive = ch.id === activeChapterId;
+                    {(grammarChapters || []).map((ch, index) => {
+                      const chNumDisplay = Number(ch?.id ?? ch?.chapter_number ?? ch?.chapterNumber ?? (index + 1));
+                      const normalizedActiveId = Number(activeChapterId ?? 1);
+                      const isActive = chNumDisplay === normalizedActiveId;
+                      const chTitle = ch?.titleEnglish || ch?.title_english || ch?.title || ch?.titleMyanmar || ch?.title_myanmar || `Chapter ${chNumDisplay}`;
+                      const totalChapters = (grammarChapters || []).length || 19;
+
                       return (
                         <button
-                          key={ch.id}
+                          key={chNumDisplay}
                           onClick={() => {
-                            setActiveChapterId(ch.id);
+                            setActiveChapterId(chNumDisplay);
                             setActiveHandbookSubTab('vocab');
                             setExpandedGrammarSection(null);
                             setExpandedChapterRuleIndex(0);
@@ -5532,10 +5981,10 @@ startxref
                               : 'bg-white hover:bg-gray-50 text-brand-dark border-gray-150 border-b-4'
                           }`}
                         >
-                          <BookOpen className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-brand-purple'}`} />
+                          <BookOpen className={`w-5 h-5 mr-3 shrink-0 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />
                           <div className="min-w-0 flex-1">
                             <div className={`font-sans font-black leading-tight text-sm ${isActive ? 'text-white' : 'text-[#3c3c3c]'}`}>
-                              Lesson {ch.id} of 19: {ch.titleEnglish}
+                              Lesson {chNumDisplay} of {totalChapters}: {chTitle}
                             </div>
                           </div>
                           <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'translate-x-0.5 text-white' : 'text-gray-300'}`} />
@@ -5551,7 +6000,19 @@ startxref
                     if (activeChapterId === null) {
                       return null;
                     }
-                    const chapter = grammarChapters.find(c => c.id === activeChapterId) || grammarChapters[0];
+                    const normalizedActiveId = Number(activeChapterId ?? 1);
+                    const chapter = (grammarChapters || []).find(c => {
+                      const cNum = Number(c?.id ?? c?.chapter_number ?? c?.chapterNumber ?? 0);
+                      return cNum === normalizedActiveId;
+                    }) || (grammarChapters || [])[0] || {};
+                    const totalChapters = (grammarChapters || []).length || 19;
+                    const chapterTitle = chapter?.titleEnglish || chapter?.title_english || chapter?.title || chapter?.titleMyanmar || chapter?.title_myanmar || `Chapter ${normalizedActiveId}`;
+                    const chapterNumDisplay = Number(chapter?.id ?? chapter?.chapter_number ?? chapter?.chapterNumber ?? normalizedActiveId);
+
+                    console.log("Current Data State (GrammarChapters):", grammarChapters);
+                    console.log("Current Data State (Active Chapter):", chapter);
+                    console.log("Current Data State (GrammarExtMap):", grammarExtMap);
+
                     return (
                       <>
                         {/* Mobile Back navigation button */}
@@ -5568,17 +6029,17 @@ startxref
                         {/* Active Chapter Splash Welcome card */}
                         <div className="duo-card p-6 md:p-8 bg-white border-2 border-gray-100 flex items-start gap-4">
                           <div className="w-12 h-12 bg-brand-purple-light text-brand-purple rounded-2xl flex items-center justify-center shrink-0 border border-brand-purple/20 shadow-xs font-sans font-black text-sm select-none">
-                            {chapter.id}
+                            {chapterNumDisplay}
                           </div>
                           <div>
                             <span className="text-[10px] font-sans text-brand-purple bg-brand-purple-light px-2.5 py-1 rounded-full font-extrabold border border-brand-purple/20 select-none uppercase">
                               Active Handbook Chapter
                             </span>
                             <h2 className="text-xl md:text-2xl font-sans font-black text-brand-dark tracking-tight mt-3">
-                              Lesson {chapter.id} of 19: {chapter.titleEnglish}
+                              Lesson {chapterNumDisplay} of {totalChapters}: {chapterTitle}
                             </h2>
                             <p className="text-xs text-brand-muted font-sans font-bold mt-1">
-                              {chapter.titleMyanmar}
+                              {chapter?.titleMyanmar || chapter?.title_myanmar || ''}
                             </p>
                           </div>
                         </div>
@@ -5596,22 +6057,22 @@ startxref
                               title = 'Vocabulary';
                               mmTitle = 'ဝေါဟာရစု';
                               thTitle = 'คำศัพท์';
-                              icon = <FileText className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} />;
+                              icon = <FileText className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
                             } else if (tab === 'grammar') {
                               title = 'Grammar';
                               mmTitle = 'သဒ္ဒါ';
                               thTitle = 'ไวยากรณ์';
-                              icon = <BookOpen className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} />;
+                              icon = <BookOpen className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
                             } else if (tab === 'dialogue') {
                               title = 'Dialogue';
                               mmTitle = 'အမေးအဖြေ';
                               thTitle = 'ถาม-ตอบ';
-                              icon = <HelpCircle className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} />;
+                              icon = <HelpCircle className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
                             } else {
                               title = 'Conversation';
                               mmTitle = 'စကားပြော';
                               thTitle = 'บทสนทนา';
-                              icon = <Users className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} />;
+                              icon = <Users className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
                             }
 
                             return (
@@ -5639,19 +6100,24 @@ startxref
                         </div>
 
                         {/* Selected Tab Content Area */}
-                        <div className="space-y-6">
+                        <div className="space-y-6 pb-24">
                           {(() => {
-                            const enriched = getGrammarExtDataForChapter(chapter.id, chapter.titleEnglish, chapter.titleMyanmar);
+                            const enriched = getGrammarExtDataForChapter(chapter.id, chapter.titleEnglish, chapter.titleMyanmar, grammarExtMap, lessons);
 
                             if (activeHandbookSubTab === 'vocab') {
-                              const filteredVocab = enriched.vocab.filter((v) => {
+                              const rawVocab = Array.isArray(enriched?.vocab) ? enriched.vocab : [];
+                              const filteredVocab = rawVocab.filter((v: any) => {
                                 const q = vocabSearch.trim().toLowerCase();
                                 if (!q) return true;
+                                const thai = (v?.thai || v?.text_thai || v?.textThai || '').toLowerCase();
+                                const phonetic = (v?.phonetic || v?.text_phonetic || v?.textPhonetic || '').toLowerCase();
+                                const english = (v?.english || v?.text_english || v?.textEnglish || '').toLowerCase();
+                                const myanmar = (v?.myanmar || v?.text_myanmar || v?.textMyanmar || '').toLowerCase();
                                 return (
-                                  v.thai.toLowerCase().includes(q) ||
-                                  v.phonetic.toLowerCase().includes(q) ||
-                                  v.english.toLowerCase().includes(q) ||
-                                  v.myanmar.toLowerCase().includes(q)
+                                  thai.includes(q) ||
+                                  phonetic.includes(q) ||
+                                  english.includes(q) ||
+                                  myanmar.includes(q)
                                 );
                               });
 
@@ -5703,300 +6169,259 @@ startxref
                                     </div>
                                   ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
-                                      {filteredVocab.map((item, idx) => (
-                                        <div
-                                          key={idx}
-                                          className="duo-card p-4 bg-gray-50/50 border border-gray-100 flex items-center justify-between gap-4 hover:border-gray-250 transition-all"
-                                        >
-                                          <div className="min-w-0 flex-1">
-                                            <div className="font-sans font-black text-brand-dark text-sm leading-tight flex items-baseline gap-1.5 flex-wrap">
-                                              <span className="text-brand-purple text-[15px]">{item.thai}</span>
-                                              <span className="text-[10px] text-brand-green font-extrabold italic bg-brand-green-light px-2 py-0.5 rounded-full">
-                                                ({item.phonetic})
-                                              </span>
-                                              {item.phonetic && (
-                                                <span className="text-[10px] text-emerald-600 font-extrabold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                                                  အသံထွက်: {getMyanmarPhonetic(item.phonetic)}
-                                                </span>
+                                      {filteredVocab.map((item: any, idx: number) => {
+                                        const thaiText = item?.thai || item?.text_thai || item?.textThai || '';
+                                        const phoneticText = item?.phonetic || item?.text_phonetic || item?.textPhonetic || '';
+                                        const englishText = item?.english || item?.text_english || item?.textEnglish || '';
+                                        const myanmarText = item?.myanmar || item?.text_myanmar || item?.textMyanmar || '';
+
+                                        return (
+                                          <div
+                                            key={idx}
+                                            className="duo-card p-4 bg-gray-50/50 border border-gray-100 flex items-center justify-between gap-4 hover:border-gray-250 transition-all"
+                                          >
+                                            <div className="min-w-0 flex-1">
+                                              <div className="font-sans font-black text-brand-dark text-sm leading-tight flex items-baseline gap-1.5 flex-wrap">
+                                                <span className="text-brand-purple text-[15px]">{thaiText}</span>
+                                                {phoneticText && (
+                                                  <span className="text-[10px] text-brand-green font-extrabold italic bg-brand-green-light px-2 py-0.5 rounded-full">
+                                                    ({phoneticText})
+                                                  </span>
+                                                )}
+                                                {phoneticText && (
+                                                  <span className="text-[10px] text-emerald-600 font-extrabold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
+                                                    အသံထွက်: {getMyanmarPhonetic(phoneticText)}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {englishText && (
+                                                <div className="text-[11px] text-brand-muted font-sans font-bold leading-normal mt-2">
+                                                  {englishText}
+                                                </div>
+                                              )}
+                                              {myanmarText && (
+                                                <div className="text-xs text-brand-dark font-sans font-semibold border-l-2 border-brand-purple/25 pl-2 mt-1">
+                                                  {myanmarText}
+                                                </div>
                                               )}
                                             </div>
-                                            <div className="text-[11px] text-brand-muted font-sans font-bold leading-normal mt-2">
-                                              {item.english}
-                                            </div>
-                                            <div className="text-xs text-brand-dark font-sans font-semibold border-l-2 border-brand-purple/25 pl-2 mt-1">
-                                              {item.myanmar}
-                                            </div>
-                                          </div>
 
-                                          <div className="flex items-center gap-1.5 shrink-0">
-                                            <GrammarVocabDropdown sentence={item.thai} allLessons={lessons} />
-                                            <button
-                                              onClick={() => speakText(item.thai)}
-                                              className="w-10 h-10 rounded-xl bg-white border-2 border-b-4 border-gray-200 hover:bg-gray-50 flex items-center justify-center shrink-0 transition-all active:translate-y-0.5 active:border-b-2"
-                                              title="Listen pronunciation"
-                                            >
-                                              <Volume2 className="w-5 h-5 text-brand-purple" />
-                                            </button>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                              <GrammarVocabDropdown sentence={thaiText} allLessons={lessons} />
+                                              <button
+                                                onClick={() => speakText(thaiText)}
+                                                className="w-10 h-10 rounded-xl bg-white border-2 border-b-4 border-gray-200 hover:bg-gray-50 flex items-center justify-center shrink-0 transition-all active:translate-y-0.5 active:border-b-2"
+                                                title="Listen pronunciation"
+                                              >
+                                                <Volume2 className="w-5 h-5 text-brand-purple" />
+                                              </button>
+                                            </div>
                                           </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
                               );
                             }
 
-                            if (activeHandbookSubTab === 'grammar') {
-                              return (
-                                <div className="bg-white rounded-3xl border-2 border-gray-100 shadow-xs p-6 space-y-4 animate-fadeIn">
-                                  <div className="flex items-start gap-4 border-b border-gray-100 pb-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-brand-purple-light text-brand-purple flex items-center justify-center shrink-0 border border-brand-purple/20">
-                                      <BookOpen className="w-6 h-6 text-brand-purple" />
-                                    </div>
-                                    <div>
-                                      <span className="text-[9px] font-sans text-brand-purple bg-brand-purple-light px-2.5 py-0.5 rounded font-black uppercase">
-                                        Section 2 • အပိုင်း ၂
-                                      </span>
-                                      <h3 className="text-lg md:text-xl font-sans font-black text-brand-dark tracking-tight">
-                                        Grammar Notes • သဒ္ဒါမှတ်စုများ <span className="text-brand-muted text-sm font-normal font-sans">(ไวยากรณ์)</span>
-                                      </h3>
-                                      <p className="text-xs text-brand-muted font-sans font-bold mt-1">
-                                        Interactive syntax patterns, descriptive grammar components, and practice exercises.
-                                      </p>
-                                    </div>
-                                  </div>
+                               if (activeHandbookSubTab === 'grammar') {
+                               const grammarRulesList: any[] = [];
+                               if (chapter?.rules && Array.isArray(chapter.rules) && chapter.rules.length > 0) {
+                                 grammarRulesList.push(...chapter.rules);
+                               }
+                               if (enriched) {
+                                 if (Array.isArray(enriched.grammarList) && enriched.grammarList.length > 0) {
+                                   grammarRulesList.push(...enriched.grammarList);
+                                 } else if (enriched.title || enriched.explanation || (enriched.examples && enriched.examples.length > 0)) {
+                                   grammarRulesList.push({
+                                     title: enriched.title || chapter?.titleEnglish || 'Grammar Note',
+                                     title_myanmar: enriched.title_myanmar || chapter?.titleMyanmar || '',
+                                     explanation: enriched.explanation || '',
+                                     explanation_myanmar: enriched.explanation_myanmar || '',
+                                     examples: Array.isArray(enriched.examples)
+                                       ? enriched.examples
+                                       : (enriched.vocab || enriched.sentences || enriched.qa || [])
+                                   });
+                                 }
+                               }
 
-                                  <div className="space-y-4">
-                                    {chapter.rules.map((rule, ruleIdx) => {
-                                      const isExpanded = expandedChapterRuleIndex === ruleIdx;
-                                      const currentMode = exampleModeForRules[`${chapter.id}-${ruleIdx}`] || 'standard';
-                                      
-                                      // Get page-specific rule data
-                                      const ruleData = getSubPageContent('handbook', chapter.id, ruleIdx, handbookSubPageIndex, rule);
+                               return (
+                                 <div className="bg-white rounded-3xl border-2 border-gray-100 shadow-xs p-6 space-y-4 animate-fadeIn">
+                                   <div className="flex items-start gap-4 border-b border-gray-100 pb-4">
+                                     <div className="w-12 h-12 rounded-2xl bg-brand-purple-light text-brand-purple flex items-center justify-center shrink-0 border border-brand-purple/20">
+                                       <BookOpen className="w-6 h-6 text-brand-purple" />
+                                     </div>
+                                     <div>
+                                       <span className="text-[9px] font-sans text-brand-purple bg-brand-purple-light px-2.5 py-0.5 rounded font-black uppercase">
+                                         Section 2 • အပိုင်း ၂
+                                       </span>
+                                       <h3 className="text-lg md:text-xl font-sans font-black text-brand-dark tracking-tight">
+                                         Grammar Notes • သဒ္ဒါမှတ်စုများ <span className="text-brand-muted text-sm font-normal font-sans">(ไวยากรณ์)</span>
+                                       </h3>
+                                       <p className="text-xs text-brand-muted font-sans font-bold mt-1">
+                                         Interactive syntax patterns, descriptive grammar components, and practice exercises.
+                                       </p>
+                                     </div>
+                                   </div>
 
-                                      // Active examples
-                                      const activeExamples = currentMode === 'standard' 
-                                        ? (ruleData.examples || []) 
-                                        : getAdditionalPhrases(chapter.id, ruleIdx, currentMode);
+                                   {grammarRulesList.length === 0 ? (
+                                     <div className="p-8 text-center bg-gray-50/50 rounded-2xl border border-gray-150">
+                                       <p className="text-xs font-sans font-bold text-brand-muted">
+                                         No grammar notes available for this section.
+                                       </p>
+                                     </div>
+                                   ) : (
+                                     <div className="space-y-4">
+                                       {grammarRulesList.map((rule, ruleIdx) => {
+                                         const isExpanded = expandedChapterRuleIndex === ruleIdx || expandedChapterRuleIndex === -1;
+                                         const currentMode = exampleModeForRules[`${chapter.id}-${ruleIdx}`] || 'standard';
+                                         
+                                         // Get page-specific rule data or rule fallback
+                                         const ruleData = getSubPageContent('handbook', chapter.id, ruleIdx, handbookSubPageIndex, rule);
+                                         const titleText = rule.title || ruleData.title;
+                                         const titleMmText = rule.title_myanmar || '';
+                                         const expText = rule.explanation || ruleData.explanation;
+                                         const expMmText = rule.explanation_myanmar || ruleData.explanationMyanmar;
 
-                                      return (
-                                        <div
-                                          key={ruleIdx}
-                                          id={`handbook-rule-${ruleIdx}`}
-                                          className="duo-card bg-white border-2 border-gray-100 overflow-hidden"
-                                        >
-                                          {/* Collapsible Accordion Header */}
-                                          <button
-                                            onClick={() => {
-                                              setExpandedChapterRuleIndex(isExpanded ? -1 : ruleIdx);
-                                              setHandbookSubPageIndex(0);
-                                            }}
-                                            className="w-full text-left p-5 flex items-center justify-between gap-4 hover:bg-gray-55 transition-colors select-none focus:outline-none"
-                                          >
-                                            <div className="flex items-center gap-3 min-w-0">
-                                              <div className={`w-8 h-8 rounded-xl border flex items-center justify-center font-sans font-black text-xs shrink-0 select-none ${
-                                                isExpanded 
-                                                  ? 'bg-brand-purple text-white border-brand-purple shadow-xs' 
-                                                  : 'bg-brand-purple-light text-brand-purple border-brand-purple/20'
-                                              }`}>
-                                                {ruleIdx + 1}
-                                              </div>
-                                              <div className="min-w-0">
-                                                <h5 className="font-sans font-black text-brand-purple text-base leading-tight truncate">
-                                                  {rule.title}
-                                                </h5>
-                                              </div>
-                                            </div>
+                                         // Active examples
+                                         const activeExamples = (rule.examples && rule.examples.length > 0)
+                                           ? rule.examples
+                                           : (currentMode === 'standard' 
+                                             ? (ruleData.examples || []) 
+                                             : getAdditionalPhrases(chapter.id, ruleIdx, currentMode));
 
-                                            <div className="shrink-0">
-                                              {isExpanded ? (
-                                                <ChevronUp className="w-5 h-5 text-brand-purple" />
-                                              ) : (
-                                                <ChevronDown className="w-5 h-5 text-gray-400" />
-                                              )}
-                                            </div>
-                                          </button>
+                                         return (
+                                           <div
+                                             key={ruleIdx}
+                                             id={`handbook-rule-${ruleIdx}`}
+                                             className="duo-card bg-white border-2 border-gray-100 overflow-hidden"
+                                           >
+                                             {/* Accordion Header */}
+                                             <button
+                                               onClick={() => {
+                                                 setExpandedChapterRuleIndex(isExpanded && expandedChapterRuleIndex !== -1 ? -1 : ruleIdx);
+                                                 setHandbookSubPageIndex(0);
+                                               }}
+                                               className="w-full text-left p-5 flex items-center justify-between gap-4 hover:bg-gray-55 transition-colors select-none focus:outline-none"
+                                             >
+                                               <div className="flex items-center gap-3 min-w-0">
+                                                 <div className={`w-8 h-8 rounded-xl border flex items-center justify-center font-sans font-black text-xs shrink-0 select-none ${
+                                                   isExpanded 
+                                                     ? 'bg-brand-purple text-white border-brand-purple shadow-xs' 
+                                                     : 'bg-brand-purple-light text-brand-purple border-brand-purple/20'
+                                                 }`}>
+                                                   {ruleIdx + 1}
+                                                 </div>
+                                                 <div className="min-w-0">
+                                                   <h5 className="font-sans font-black text-brand-purple text-base leading-tight truncate">
+                                                     {titleText}
+                                                     {titleMmText && <span className="text-gray-500 font-normal ml-2">({titleMmText})</span>}
+                                                   </h5>
+                                                 </div>
+                                               </div>
 
-                                          {/* Collapsible Content Body */}
-                                          {isExpanded && (
-                                            <div className="px-5 pb-5 pt-2 space-y-4 border-t border-gray-100">
-                                              
-                                              {/* Sub-Page Navigation Controls Bar */}
-                                              <div className="flex items-center justify-end bg-[#fdfcff] p-3 rounded-2xl border border-brand-purple/15 mt-2">
-                                                {/* Quick Pagers */}
-                                                <div className="flex items-center gap-2 select-none">
-                                                  <button
-                                                    onClick={() => setHandbookSubPageIndex((p) => Math.max(0, p - 1))}
-                                                    disabled={handbookSubPageIndex === 0}
-                                                    className="text-[10px] font-sans font-black text-brand-dark hover:text-brand-purple disabled:opacity-30 disabled:pointer-events-none flex items-center gap-0.5"
-                                                  >
-                                                    <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
-                                                    BACK
-                                                  </button>
-                                                  <span className="text-[10px] font-mono font-bold bg-brand-purple-light/50 px-2 py-0.5 rounded text-brand-purple">
-                                                    {handbookSubPageIndex + 1} / 3
-                                                  </span>
-                                                  <button
-                                                    onClick={() => setHandbookSubPageIndex((p) => Math.min(2, p + 1))}
-                                                    disabled={handbookSubPageIndex === 2}
-                                                    className="text-[10px] font-sans font-black text-brand-dark hover:text-brand-purple disabled:opacity-30 disabled:pointer-events-none flex items-center gap-0.5"
-                                                  >
-                                                    NEXT
-                                                    <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                                                  </button>
-                                                </div>
-                                              </div>
+                                               <div className="shrink-0">
+                                                 {isExpanded ? (
+                                                   <ChevronUp className="w-5 h-5 text-brand-purple" />
+                                                 ) : (
+                                                   <ChevronDown className="w-5 h-5 text-gray-400" />
+                                                 )}
+                                               </div>
+                                             </button>
 
-                                              {/* Page-Specific Topic Title */}
-                                              <div className="pt-1">
-                                                <span className="text-[9px] font-sans text-brand-purple bg-brand-purple-light border border-brand-purple/10 px-2 py-0.5 rounded font-black uppercase">
-                                                  Page {handbookSubPageIndex + 1} • {handbookSubPageIndex === 0 ? "Theory" : handbookSubPageIndex === 1 ? "Nuance" : "Drills"}
-                                                </span>
-                                                <h6 className="font-sans font-black text-brand-dark text-sm mt-1">
-                                                  {ruleData.title}
-                                                </h6>
-                                              </div>
+                                             {/* Content Body */}
+                                             {isExpanded && (
+                                               <div className="px-5 pb-5 pt-2 space-y-4 border-t border-gray-100">
+                                                 {/* Expositions */}
+                                                 {expText && (
+                                                   <p className="text-xs sm:text-sm text-brand-dark font-sans leading-relaxed font-semibold">
+                                                     {expText}
+                                                   </p>
+                                                 )}
+                                                 {expMmText && (
+                                                   <p className="text-xs sm:text-sm text-brand-muted font-sans leading-relaxed italic border-l-4 border-brand-purple/20 pl-3 font-semibold mt-1">
+                                                     {expMmText}
+                                                   </p>
+                                                 )}
 
-                                              {/* Expositions */}
-                                              {isSingleSentenceEnglish(ruleData.explanation) && (
-                                                <p className="text-xs sm:text-sm text-brand-dark font-sans leading-relaxed font-semibold">
-                                                  {ruleData.explanation}
-                                                </p>
-                                              )}
-                                              <p className="text-xs sm:text-sm text-brand-muted font-sans leading-relaxed italic border-l-4 border-brand-purple/20 pl-3 font-semibold mt-1">
-                                                {ruleData.explanationMyanmar}
-                                              </p>
+                                                 {/* Rule Examples Grid */}
+                                                 {activeExamples && activeExamples.length > 0 && (
+                                                   <div className="space-y-3 pt-2">
+                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                                       {activeExamples.map((ex: any, exIdx: number) => (
+                                                         <div key={exIdx} className="duo-card p-4 bg-gray-50/50 border border-gray-100 flex items-center justify-between gap-4 hover:border-gray-250 transition-all">
+                                                           <div className="min-w-0 flex-1">
+                                                             <div className="font-sans font-black text-brand-dark text-sm leading-tight flex items-baseline gap-1.5 flex-wrap">
+                                                               <span className="text-brand-purple text-[15px]">{ex.thai}</span>
+                                                               {ex.phonetic && (
+                                                                 <span className="text-[10px] text-brand-green font-extrabold italic bg-brand-green-light px-2 py-0.5 rounded-full">
+                                                                   ({ex.phonetic})
+                                                                 </span>
+                                                               )}
+                                                               {ex.phonetic && (
+                                                                 <span className="text-[10px] text-emerald-600 font-extrabold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
+                                                                   အသံထွက်: {getMyanmarPhonetic(ex.phonetic)}
+                                                                 </span>
+                                                               )}
+                                                             </div>
+                                                             {ex.english && (
+                                                               <div className="text-[11px] text-brand-muted font-sans font-bold leading-normal mt-2">
+                                                                 {ex.english}
+                                                               </div>
+                                                             )}
+                                                             {ex.myanmar && (
+                                                               <div className="text-[11px] text-brand-dark font-sans font-bold leading-normal mt-0.5">
+                                                                 {ex.myanmar}
+                                                               </div>
+                                                             )}
+                                                           </div>
 
-                                              {/* Rule Examples Grid with Pagination */}
-                                              {activeExamples && activeExamples.length > 0 && (() => {
-                                                const handbookExamplesPerPage = 4;
-                                                const totalHandbookExamplePages = Math.ceil(activeExamples.length / handbookExamplesPerPage);
-                                                const paginatedHandbookExamples = activeExamples.slice(
-                                                  currentHandbookExamplePage * handbookExamplesPerPage,
-                                                  (currentHandbookExamplePage + 1) * handbookExamplesPerPage
-                                                );
-
-                                                return (
-                                                  <div className="space-y-3 pt-1">
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                                                      {paginatedHandbookExamples.map((ex: any, exIdx: number) => {
-                                                        const globalExIdx = currentHandbookExamplePage * handbookExamplesPerPage + exIdx;
-                                                        return (
-                                                          <div key={globalExIdx} className="duo-card p-4 bg-gray-50/50 border border-gray-100 flex items-center justify-between gap-4 hover:border-gray-250 transition-all">
-                                                            <div className="min-w-0 flex-1">
-                                                              <div className="font-sans font-black text-brand-dark text-sm leading-tight flex items-baseline gap-1.5 flex-wrap">
-                                                                <span className="text-brand-purple text-[15px]">{ex.thai}</span>
-                                                                <span className="text-[10px] text-brand-green font-extrabold italic bg-brand-green-light px-2 py-0.5 rounded-full">
-                                                                  ({ex.phonetic})
-                                                                </span>
-                                                                {ex.phonetic && (
-                                                                  <span className="text-[10px] text-emerald-600 font-extrabold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                                                                    အသံထွက်: {getMyanmarPhonetic(ex.phonetic)}
-                                                                  </span>
-                                                                )}
-                                                              </div>
-                                                              <div className="text-[11px] text-brand-muted font-sans font-bold leading-normal mt-2">
-                                                                {ex.english}
-                                                              </div>
-                                                              <div className="text-[11px] text-brand-dark font-sans font-bold leading-normal mt-0.5">
-                                                                {ex.myanmar}
-                                                              </div>
-                                                            </div>
-
-                                                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0 self-start">
-                                                              <GrammarVocabDropdown sentence={ex.thai} allLessons={lessons} />
-                                                              <button
-                                                                onClick={() => speakText(ex.thai)}
-                                                                className="px-2 h-8 rounded-xl bg-white border-2 border-b-4 border-gray-200 hover:bg-gray-50 flex items-center justify-center gap-1 shrink-0 transition-all active:translate-y-0.5"
-                                                                title="Listen normal speed"
-                                                              >
-                                                                <Volume2 className="w-3.5 h-3.5 text-brand-purple" />
-                                                                <span className="text-[8px] font-sans font-black text-brand-purple bg-brand-purple-light px-1 py-0.5 rounded-md select-none leading-none">1.0x</span>
-                                                              </button>
-                                                            </div>
-                                                          </div>
-                                                        );
-                                                      })}
-                                                    </div>
-
-                                                    {/* Handbook Examples Pagination Footer */}
-                                                    {totalHandbookExamplePages > 1 && (
-                                                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 select-none">
-                                                        <button
-                                                          onClick={() => setCurrentHandbookExamplePage(prev => Math.max(0, prev - 1))}
-                                                          disabled={currentHandbookExamplePage === 0}
-                                                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-sans font-black tracking-wide transition-all cursor-pointer ${
-                                                            currentHandbookExamplePage === 0
-                                                              ? 'opacity-30 cursor-not-allowed text-slate-400'
-                                                              : 'text-brand-purple hover:bg-brand-purple/5'
-                                                          }`}
-                                                        >
-                                                          <ChevronLeft className="w-3.5 h-3.5" />
-                                                          <span>PREVIOUS SENTENCES</span>
-                                                        </button>
-                                                        
-                                                        <span className="text-[10px] font-mono text-brand-muted font-black uppercase">
-                                                          Page {currentHandbookExamplePage + 1} of {totalHandbookExamplePages}
-                                                        </span>
-
-                                                        <button
-                                                          onClick={() => setCurrentHandbookExamplePage(prev => Math.min(totalHandbookExamplePages - 1, prev + 1))}
-                                                          disabled={currentHandbookExamplePage === totalHandbookExamplePages - 1}
-                                                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-sans font-black tracking-wide transition-all cursor-pointer ${
-                                                            currentHandbookExamplePage === totalHandbookExamplePages - 1
-                                                              ? 'opacity-30 cursor-not-allowed text-slate-400'
-                                                              : 'text-brand-purple hover:bg-brand-purple/5'
-                                                          }`}
-                                                        >
-                                                          <span>NEXT SENTENCES</span>
-                                                          <ChevronRight className="w-3.5 h-3.5" />
-                                                        </button>
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                );
-                                              })()}
-
-                                              {/* Elegant Footer Navigation Bar */}
-                                              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-4 bg-[#fdfcff] -mx-5 -mb-5 p-4 rounded-b-2xl">
-                                                {handbookSubPageIndex < 2 ? (
-                                                  <button
-                                                    onClick={() => setHandbookSubPageIndex(handbookSubPageIndex + 1)}
-                                                    className="text-brand-purple font-sans font-black text-xs flex items-center gap-1 hover:underline active:translate-y-0.5 transition-transform"
-                                                  >
-                                                    Next
-                                                    <ChevronRight className="w-3.5 h-3.5" />
-                                                  </button>
-                                                ) : ruleIdx < chapter.rules.length - 1 ? (
-                                                  <button
-                                                    onClick={() => {
-                                                      setExpandedChapterRuleIndex(ruleIdx + 1);
-                                                      setHandbookSubPageIndex(0);
-                                                      setTimeout(() => {
-                                                        document.getElementById(`handbook-rule-${ruleIdx + 1}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                      }, 100);
-                                                    }}
-                                                    className="text-brand-purple font-sans font-black text-xs flex items-center gap-1 hover:underline active:translate-y-0.5 transition-transform"
-                                                  >
-                                                    Next Topic • အောက်ပါမှတ်စု
-                                                    <ChevronRight className="w-3.5 h-3.5" />
-                                                  </button>
-                                                ) : (
-                                                  <span className="text-[10px] font-sans text-brand-green font-extrabold uppercase">Chapter Complete • ပြီးဆုံးပါသည်</span>
-                                                )}
-                                              </div>
-
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            }
+                                                           <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0 self-start">
+                                                             <GrammarVocabDropdown sentence={ex.thai} allLessons={lessons} />
+                                                             <button
+                                                               onClick={() => speakText(ex.thai)}
+                                                               className="px-2 h-8 rounded-xl bg-white border-2 border-b-4 border-gray-200 hover:bg-gray-50 flex items-center justify-center gap-1 shrink-0 transition-all active:translate-y-0.5"
+                                                               title="Listen normal speed"
+                                                             >
+                                                               <Volume2 className="w-3.5 h-3.5 text-brand-purple" />
+                                                               <span className="text-[8px] font-sans font-black text-brand-purple bg-brand-purple-light px-1 py-0.5 rounded-md select-none leading-none">1.0x</span>
+                                                             </button>
+                                                           </div>
+                                                         </div>
+                                                       ))}
+                                                     </div>
+                                                   </div>
+                                                 )}
+                                               </div>
+                                             )}
+                                           </div>
+                                         );
+                                       })}
+                                     </div>
+                                   )}
+                                 </div>
+                               );
+                             }
 
                             if (activeHandbookSubTab === 'dialogue') {
+                              const rawList = (enriched && Array.isArray(enriched.dialogueList) && enriched.dialogueList.length > 0)
+                                ? enriched.dialogueList
+                                : ((enriched && Array.isArray(enriched.dialogue)) ? enriched.dialogue : []);
+                              
+                              const dialogueList = rawList.filter((item: any, index: number, self: any[]) =>
+                                index === self.findIndex((t: any) => {
+                                  const itemThai = item?.text_thai || item?.textThai || item?.thai || '';
+                                  const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                                  return (
+                                    (t.id && item.id && String(t.id) === String(item.id)) ||
+                                    (tThai && itemThai && tThai === itemThai)
+                                  );
+                                })
+                              );
+
+                              const firstSpeaker = dialogueList[0]?.speaker || '';
+
                               return (
                                 <div className="bg-white rounded-3xl border-2 border-gray-100 shadow-xs p-6 space-y-4 animate-fadeIn">
                                   <div className="flex items-start gap-4 border-b border-gray-100 pb-4">
@@ -6016,74 +6441,165 @@ startxref
                                     </div>
                                   </div>
 
-                                  <div className="space-y-4">
-                                    {enriched.qa.map((qa, qi) => (
-                                      <div
-                                        key={qi}
-                                        className="bg-white border-2 border-gray-100 rounded-2xl p-5 shadow-xs space-y-4"
-                                      >
-                                        {/* Question Section */}
-                                        <div className="flex items-start gap-3">
-                                          <span className="w-6 h-6 bg-amber-500 text-white rounded-lg flex items-center justify-center font-sans font-black text-xs shrink-0 select-none">
-                                            Q
-                                          </span>
-                                          <div className="min-w-0 flex-1 space-y-1">
-                                            <div className="flex items-baseline gap-2 flex-wrap">
-                                              <span className="text-base font-sans font-extrabold text-brand-dark">
-                                                {qa.q.thai}
-                                              </span>
-                                              <span className="text-[9px] text-[#e0a800] font-extrabold italic bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
-                                                ({qa.q.phonetic})
-                                              </span>
+                                  {dialogueList.length > 0 ? (
+                                    <div className="space-y-4">
+                                      {dialogueList.map((item: any, idx: number) => {
+                                        const thaiText = item?.text_thai || item?.textThai || item?.thai || '';
+                                        const mmText = item?.text_myanmar || item?.textMyanmar || item?.myanmar || '';
+                                        const speakerName = item?.speaker || (idx % 2 === 0 ? 'Question' : 'Answer');
+                                        const phonetic = item?.phonetic || item?.text_phonetic || item?.textPhonetic || '';
+                                        
+                                        const cleanSpeaker = String(speakerName).trim().toUpperCase();
+                                        let isSpeakerQ: boolean;
+                                        if (cleanSpeaker === 'Q' || cleanSpeaker === 'QUESTION' || (firstSpeaker && item?.speaker === firstSpeaker)) {
+                                          isSpeakerQ = true;
+                                        } else if (cleanSpeaker === 'A' || cleanSpeaker === 'ANSWER') {
+                                          isSpeakerQ = false;
+                                        } else {
+                                          isSpeakerQ = idx % 2 === 0;
+                                        }
+
+                                        return (
+                                          <div key={idx} className="duo-card p-5 bg-white border-2 border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-gray-200 transition-all">
+                                            <div className="flex items-start gap-3.5 min-w-0">
+                                              <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 font-sans font-black text-xs ${
+                                                isSpeakerQ ? 'bg-amber-500 text-white shadow-xs' : 'bg-emerald-500 text-white shadow-xs'
+                                              }`}>
+                                                {isSpeakerQ ? 'Q' : 'A'}
+                                              </div>
+
+                                              <div className="min-w-0 space-y-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="text-[10px] font-sans font-black uppercase tracking-wider px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                                                    {speakerName}
+                                                  </span>
+                                                  {phonetic && (
+                                                    <span className="text-[10px] text-brand-purple font-extrabold italic bg-brand-purple-light px-2 py-0.5 rounded-full">
+                                                      ({phonetic})
+                                                    </span>
+                                                  )}
+                                                </div>
+
+                                                <h5 className="font-sans font-black text-brand-dark text-base sm:text-lg leading-tight">
+                                                  {thaiText}
+                                                </h5>
+
+                                                {mmText && (
+                                                  <p className="text-xs sm:text-sm text-brand-muted font-sans font-bold leading-normal">
+                                                    {mmText}
+                                                  </p>
+                                                )}
+                                              </div>
                                             </div>
-                                            <div className="text-xs text-brand-muted font-sans font-medium">
-                                              {qa.q.myanmar}
+
+                                            <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                                              <GrammarVocabDropdown sentence={thaiText} allLessons={lessons} />
+                                              <button
+                                                onClick={() => speakText(thaiText)}
+                                                className="w-10 h-10 rounded-2xl bg-white border-2 border-b-4 border-gray-200 hover:bg-gray-50 flex items-center justify-center text-brand-purple transition-all active:translate-y-0.5 shadow-xs"
+                                                title="Listen audio"
+                                              >
+                                                <Volume2 className="w-5 h-5" />
+                                              </button>
                                             </div>
                                           </div>
-                                          <button
-                                            onClick={() => speakText(qa.q.thai)}
-                                            className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 flex items-center justify-center shrink-0"
-                                          >
-                                            <Volume2 className="w-4 h-4 text-brand-purple" />
-                                          </button>
-                                        </div>
-
-                                        {/* Separator line */}
-                                        <div className="border-t border-dashed border-gray-150 my-1" />
-
-                                        {/* Answer Section */}
-                                        <div className="flex items-start gap-3">
-                                          <span className="w-6 h-6 bg-brand-green text-white rounded-lg flex items-center justify-center font-sans font-black text-xs shrink-0 select-none">
-                                            A
-                                          </span>
-                                          <div className="min-w-0 flex-1 space-y-1">
-                                            <div className="flex items-baseline gap-2 flex-wrap">
-                                              <span className="text-base font-sans font-extrabold text-[#4caf50]">
-                                                {qa.a.thai}
-                                              </span>
-                                              <span className="text-[9px] text-brand-green font-extrabold italic bg-brand-green-light px-1.5 py-0.5 rounded-full border border-green-200">
-                                                ({qa.a.phonetic})
-                                              </span>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : Array.isArray(enriched?.qa) && enriched.qa.length > 0 ? (
+                                    <div className="space-y-4">
+                                      {enriched.qa.map((qa: any, qi: number) => (
+                                        <div
+                                          key={qi}
+                                          className="bg-white border-2 border-gray-100 rounded-2xl p-5 shadow-xs space-y-4"
+                                        >
+                                          <div className="flex items-start gap-3">
+                                            <span className="w-6 h-6 bg-amber-500 text-white rounded-lg flex items-center justify-center font-sans font-black text-xs shrink-0 select-none">
+                                              Q
+                                            </span>
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                              <div className="flex items-baseline gap-2 flex-wrap">
+                                                <span className="text-base font-sans font-extrabold text-brand-dark">
+                                                  {qa.q?.thai || qa.q}
+                                                </span>
+                                                {qa.q?.phonetic && (
+                                                  <span className="text-[9px] text-[#e0a800] font-extrabold italic bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                                                    ({qa.q.phonetic})
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-xs text-brand-muted font-sans font-medium">
+                                                {qa.q?.myanmar}
+                                              </div>
                                             </div>
-                                            <div className="text-xs text-brand-dark font-sans font-semibold">
-                                              {qa.a.myanmar}
-                                            </div>
+                                            <button
+                                              onClick={() => speakText(qa.q?.thai || qa.q)}
+                                              className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 flex items-center justify-center shrink-0"
+                                            >
+                                              <Volume2 className="w-4 h-4 text-brand-purple" />
+                                            </button>
                                           </div>
-                                          <button
-                                            onClick={() => speakText(qa.a.thai)}
-                                            className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 flex items-center justify-center shrink-0"
-                                          >
-                                            <Volume2 className="w-4 h-4 text-brand-purple" />
-                                          </button>
+
+                                          <div className="border-t border-dashed border-gray-150 my-1" />
+
+                                          <div className="flex items-start gap-3">
+                                            <span className="w-6 h-6 bg-brand-green text-white rounded-lg flex items-center justify-center font-sans font-black text-xs shrink-0 select-none">
+                                              A
+                                            </span>
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                              <div className="flex items-baseline gap-2 flex-wrap">
+                                                <span className="text-base font-sans font-extrabold text-[#4caf50]">
+                                                  {qa.a?.thai || qa.a}
+                                                </span>
+                                                {qa.a?.phonetic && (
+                                                  <span className="text-[9px] text-brand-green font-extrabold italic bg-brand-green-light px-1.5 py-0.5 rounded-full border border-green-200">
+                                                    ({qa.a.phonetic})
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-xs text-brand-dark font-sans font-semibold">
+                                                {qa.a?.myanmar}
+                                              </div>
+                                            </div>
+                                            <button
+                                              onClick={() => speakText(qa.a?.thai || qa.a)}
+                                              className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 flex items-center justify-center shrink-0"
+                                            >
+                                              <Volume2 className="w-4 h-4 text-brand-purple" />
+                                            </button>
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
-                                  </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="p-8 text-center bg-gray-50/50 rounded-2xl border border-gray-150">
+                                      <p className="text-xs font-sans font-bold text-brand-muted">
+                                        No dialogue notes available for this section.
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
 
                             if (activeHandbookSubTab === 'conversation') {
+                              const rawList = (enriched && Array.isArray(enriched.conversationList) && enriched.conversationList.length > 0)
+                                ? enriched.conversationList
+                                : ((enriched && Array.isArray(enriched.conversation)) ? enriched.conversation : []);
+                              
+                              const convList = rawList.filter((turn: any, index: number, self: any[]) =>
+                                index === self.findIndex((t: any) => {
+                                  const turnThai = turn?.text_thai || turn?.textThai || turn?.thai || '';
+                                  const tThai = t?.text_thai || t?.textThai || t?.thai || '';
+                                  return (
+                                    (t.id && turn.id && String(t.id) === String(turn.id)) ||
+                                    (tThai && turnThai && tThai === turnThai)
+                                  );
+                                })
+                              );
+
+                              const firstSpeaker = convList[0]?.speaker || '';
+
                               return (
                                 <div className="bg-white rounded-3xl border-2 border-gray-100 shadow-xs p-6 space-y-4 animate-fadeIn">
                                   <div className="flex items-start gap-4 border-b border-gray-100 pb-4">
@@ -6103,73 +6619,88 @@ startxref
                                     </div>
                                   </div>
 
-                                  <div className="space-y-5 bg-gray-100 p-4 md:p-6 rounded-3xl border-2 border-gray-200">
-                                    {enriched.conversation.map((turn, ti) => {
-                                      const isA = turn.speaker === 'A';
-                                      return (
-                                        <div
-                                          key={ti}
-                                          className={`flex items-start gap-2.5 ${isA ? 'justify-start' : 'justify-end'}`}
-                                        >
-                                          {/* Speaker Avatar Badge left */}
-                                          {isA && (
-                                            <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-sans font-black text-xs select-none shadow-xs shrink-0 mt-1">
-                                              A
-                                            </div>
-                                          )}
+                                  {convList.length > 0 ? (
+                                    <div className="space-y-4 bg-gray-50/50 p-4 md:p-6 rounded-3xl border-2 border-gray-100">
+                                      {convList.map((turn: any, ti: number) => {
+                                        const thaiText = turn?.text_thai || turn?.textThai || turn?.thai || '';
+                                        const phonetic = turn?.text_phonetic || turn?.textPhonetic || turn?.phonetic || '';
+                                        const mmText = turn?.text_myanmar || turn?.textMyanmar || turn?.myanmar || '';
+                                        const engText = turn?.text_english || turn?.textEnglish || turn?.english || '';
+                                        const speakerName = turn?.speaker || (ti % 2 === 0 ? 'Somchai' : 'Mark');
+                                        const isSpeaker1 = ti % 2 === 0 || (firstSpeaker && turn?.speaker === firstSpeaker) || speakerName.toLowerCase().includes('somchai') || speakerName.toLowerCase().includes('customer');
 
-                                          {/* Chat Bubble card */}
+                                        return (
                                           <div
-                                            className={`max-w-[85%] rounded-2xl p-4 shadow-xs relative border-2 ${
-                                              isA
-                                                ? 'bg-white border-gray-200 rounded-tl-none'
-                                                : 'bg-brand-purple-light border-brand-purple/20 rounded-tr-none'
-                                          }`}
+                                            key={ti}
+                                            className={`flex items-start gap-3 ${isSpeaker1 ? 'justify-start' : 'justify-end'}`}
                                           >
-                                            <div className="space-y-1">
-                                              {/* Thai bubble characters */}
-                                              <div className="flex items-baseline gap-2 flex-wrap">
-                                                 <span className={`text-[15px] font-sans font-black ${isA ? "text-brand-dark" : "text-brand-purple"}`}>
-                                                   {turn.thai || (turn as any).thai_text || '...'}
-                                                </span>
-                                                <span className="text-[9px] text-brand-muted font-extrabold italic bg-black/4 px-1.5 py-0.5 rounded-full select-none">
-                                                  ({turn.phonetic || '...'})
-                                                </span>
+                                            {isSpeaker1 && (
+                                              <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-sans font-black text-xs select-none shadow-xs shrink-0 mt-1">
+                                                {speakerName.charAt(0)}
                                               </div>
+                                            )}
 
-                                              {/* Phonetic guide rendering */}
-                                              {turn.phonetic && (
-                                                <div className="text-[10px] text-emerald-700 font-semibold italic">
-                                                  အသံထွက်: {getMyanmarPhonetic(turn.phonetic)}
-                                                </div>
-                                              )}
-
-                                              {/* Myanmar Translation rendering */}
-                                              <div className="text-xs text-[#3c3c3c] font-sans font-bold mt-1.5">
-                                                {turn.myanmar}
-                                              </div>
-                                            </div>
-
-                                            {/* Small playback action trigger inside speech bubble */}
-                                            <button
-                                              onClick={() => speakText(turn.thai)}
-                                              className="absolute bottom-2 right-2 w-7 h-7 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 flex items-center justify-center shadow-xs cursor-pointer active:translate-y-0.5"
-                                              title="Speak"
+                                            <div
+                                              className={`max-w-[85%] sm:max-w-[75%] rounded-3xl p-4 sm:p-5 shadow-xs relative border-2 ${
+                                                isSpeaker1
+                                                  ? 'bg-white border-gray-150 rounded-tl-none'
+                                                  : 'bg-brand-purple-light border-brand-purple/20 rounded-tr-none'
+                                              }`}
                                             >
-                                              <Volume2 className="w-3.5 h-3.5 text-brand-purple" />
-                                            </button>
-                                          </div>
+                                              <div className="space-y-1.5 pr-8">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="text-[10px] font-sans font-black uppercase tracking-wider px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                                                    {speakerName}
+                                                  </span>
+                                                  {phonetic && (
+                                                    <span className="text-[10px] text-brand-purple font-extrabold italic bg-brand-purple-light px-2 py-0.5 rounded-full">
+                                                      ({phonetic})
+                                                    </span>
+                                                  )}
+                                                </div>
 
-                                          {/* Speaker Avatar Badge right */}
-                                          {!isA && (
-                                            <div className="w-8 h-8 rounded-full bg-brand-purple text-white flex items-center justify-center font-sans font-black text-xs select-none shadow-xs shrink-0 mt-1">
-                                              B
+                                                <h5 className="font-sans font-black text-brand-dark text-base sm:text-lg leading-tight">
+                                                  {thaiText}
+                                                </h5>
+
+                                                {engText && (
+                                                  <div className="text-xs text-brand-muted font-sans font-medium">
+                                                    {engText}
+                                                  </div>
+                                                )}
+
+                                                {mmText && (
+                                                  <div className="text-xs sm:text-sm text-brand-dark font-sans font-bold leading-normal pt-1 border-t border-dashed border-gray-200/60">
+                                                    {mmText}
+                                                  </div>
+                                                )}
+                                              </div>
+
+                                              <button
+                                                onClick={() => speakText(thaiText)}
+                                                className="absolute top-3.5 right-3.5 w-8 h-8 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 flex items-center justify-center text-brand-purple shadow-xs cursor-pointer active:translate-y-0.5 transition-transform"
+                                                title="Play Audio"
+                                              >
+                                                <Volume2 className="w-4 h-4" />
+                                              </button>
                                             </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+
+                                            {!isSpeaker1 && (
+                                              <div className="w-9 h-9 rounded-2xl bg-brand-purple text-white flex items-center justify-center font-sans font-black text-xs select-none shadow-xs shrink-0 mt-1">
+                                                {speakerName.charAt(0)}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div className="p-8 text-center bg-gray-50/50 rounded-2xl border border-gray-150">
+                                      <p className="text-xs font-sans font-bold text-brand-muted">
+                                        No conversation data available for this section.
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
@@ -8065,7 +8596,7 @@ startxref
                                         <div className="flex items-start gap-3">
                                           {/* User Profile Avatar / Initial Badge */}
                                           {avatarUrl ? (
-                                            <img src={avatarUrl} alt={fullName} className="w-10 h-10 rounded-full object-cover border border-gray-200 shrink-0 shadow-2xs" />
+                                            <img src={avatarUrl} alt={fullName} className="w-10 h-10 rounded-full object-cover border border-gray-200 shrink-0 shadow-2xs bg-gray-100" loading="lazy" decoding="async" />
                                           ) : (
                                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-purple to-purple-800 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
                                               {initials}
@@ -10674,9 +11205,9 @@ startxref
                             lessons.forEach(l => {
                               localStorage.removeItem(`thai_custom_vocab_${l.id}`);
                             });
-                            setLessons(lessonsData);
-                            setVocabBookCategories(VOCAB_DATA);
-                            setAdminSelectedLessonId(lessonsData[0]?.id || null);
+                            setLessons([]);
+                            setVocabBookCategories([]);
+                            setAdminSelectedLessonId(null);
                             setAdminSelectedVocabCategory(null);
                             window.dispatchEvent(new Event('thai_vocab_updated'));
                             window.dispatchEvent(new Event('thai_vocab_book_categories_updated'));
@@ -10730,7 +11261,7 @@ startxref
                         </div>
 
                         <div className="flex flex-wrap gap-2.5">
-                          {lessons.map((l, index) => {
+                          {sortLessonsNaturally(lessons).map((l, index) => {
                             const isSelected = l.id === adminSelectedLessonId;
                             const isOver = draggedItemType === 'lessons' && dragOverTargetIndex === index;
                             const isDragging = draggedItemType === 'lessons' && draggedItemIndex === index;
@@ -10990,13 +11521,13 @@ startxref
                       >
                         <option value="">-- Choose a Lesson --</option>
                         <optgroup label="📖 SYLLABUS LESSONS (သင်ခန်းစာများ)">
-                          {lessons
-                            .filter(l => {
+                          {sortLessonsNaturally(
+                            lessons.filter(l => {
                               if (adminCurriculumCourseFilter === 'all') return true;
                               const lessonCourseId = l.courseId || 'course-basic';
                               return lessonCourseId === adminCurriculumCourseFilter;
                             })
-                            .map(l => (
+                          ).map(l => (
                               <option key={l.id} value={`lesson-${l.id}`}>
                                 Lesson {l.id}: {l.titleEnglish} ({l.titleThai})
                               </option>
@@ -11005,7 +11536,7 @@ startxref
                         <optgroup label="📙 VOCAB BOOK LISTS / CATEGORIES (ဝေါဟာရ အုပ်စုများ)">
                           {vocabBookCategories.map(cat => (
                             <option key={cat.name} value={`vocab-${cat.name}`}>
-                              📙 Vocab List: {cat.icon} {cat.name}
+                              📙 Vocab List: {cat.icon && !/^[A-Za-z0-9_-]+$/.test(cat.icon) ? cat.icon : '📖'} {cat.name}
                             </option>
                           ))}
                         </optgroup>
@@ -13230,10 +13761,7 @@ startxref
 
               {activeTab === 'sentence' && activeLesson && (
                 <SentenceView
-                  sentences={(activeLesson.dialogue && activeLesson.dialogue.length > 0)
-                    ? activeLesson.dialogue
-                    : (lessonsData.find(l => l.id === activeLesson.id)?.dialogue || [])
-                  }
+                  sentences={activeLesson.dialogue || []}
                   onWordMastered={handleToggleMasteredWord}
                   masteredWords={progress.masteredWords}
                   audioSpeedIndex={audioSpeedIndex}
@@ -13244,41 +13772,43 @@ startxref
               {activeTab === 'grammar' && activeLesson && (
                 activeLesson.id === 2 ? (
                   <SentenceStructureLesson onBack={() => setActiveLessonId(null)} />
-                ) : (
-                  <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-                  {/* Grammar Notes Pagination Header with Dropdown */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white px-6 py-4 rounded-2xl border-2 border-gray-100/80 shadow-xs">
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="w-2 h-2 bg-brand-purple rounded-full shrink-0" />
-                      <span className="text-xs font-sans text-brand-dark font-black uppercase tracking-wider">
-                        Lesson {activeLesson.id} Grammar Guide • သဒ္ဒါလမ်းညွှန်
-                      </span>
+                ) : (() => {
+                  const grammarNotesList = activeLesson.grammarNotes || [];
+                  return (
+                    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+                    {/* Grammar Notes Pagination Header with Dropdown */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white px-6 py-4 rounded-2xl border-2 border-gray-100/80 shadow-xs">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="w-2 h-2 bg-brand-purple rounded-full shrink-0" />
+                        <span className="text-xs font-sans text-brand-dark font-black uppercase tracking-wider">
+                          Lesson {activeLesson.id} Grammar Guide • သဒ္ဒါလမ်းညွှန်
+                        </span>
+                      </div>
+
+                      {/* Filter Dropdown */}
+                      <div className="flex items-center gap-2 w-full md:w-auto">
+                        <label htmlFor="grammar-select" className="sr-only">Choose grammar point</label>
+                        <select
+                          id="grammar-select"
+                          value={currentGrammarPageIndex}
+                          onChange={(e) => setCurrentGrammarPageIndex(parseInt(e.target.value))}
+                          className="bg-gray-50 border-2 border-gray-200 text-brand-dark text-xs rounded-xl focus:ring-brand-purple focus:border-brand-purple block w-full md:w-72 p-2 font-bold font-sans outline-none cursor-pointer shadow-2xs hover:bg-gray-100 transition-colors"
+                        >
+                          {grammarNotesList.map((note, idx) => (
+                            <option key={idx} value={idx}>
+                              Goal {idx + 1}: {note.title ? (note.title.length > 35 ? note.title.substring(0, 35) + '...' : note.title) : `Rule ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="text-xs font-sans text-brand-muted font-bold shrink-0">
+                        Page {currentGrammarPageIndex + 1} of {grammarNotesList.length}
+                      </div>
                     </div>
 
-                    {/* Filter Dropdown */}
-                    <div className="flex items-center gap-2 w-full md:w-auto">
-                      <label htmlFor="grammar-select" className="sr-only">Choose grammar point</label>
-                      <select
-                        id="grammar-select"
-                        value={currentGrammarPageIndex}
-                        onChange={(e) => setCurrentGrammarPageIndex(parseInt(e.target.value))}
-                        className="bg-gray-50 border-2 border-gray-200 text-brand-dark text-xs rounded-xl focus:ring-brand-purple focus:border-brand-purple block w-full md:w-72 p-2 font-bold font-sans outline-none cursor-pointer shadow-2xs hover:bg-gray-100 transition-colors"
-                      >
-                        {activeLesson.grammarNotes.map((note, idx) => (
-                          <option key={idx} value={idx}>
-                            Goal {idx + 1}: {note.title.length > 35 ? note.title.substring(0, 35) + '...' : note.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="text-xs font-sans text-brand-muted font-bold shrink-0">
-                      Page {currentGrammarPageIndex + 1} of {activeLesson.grammarNotes.length}
-                    </div>
-                  </div>
-
-                  {/* Active Grammar Note */}
-                  {activeLesson.grammarNotes[currentGrammarPageIndex] ? (() => {
+                    {/* Active Grammar Note */}
+                    {grammarNotesList[currentGrammarPageIndex] ? (() => {
                     const currentLessonMode = exampleModeForRules[`lesson-${activeLesson.id}-${currentGrammarPageIndex}`] || 'standard';
                     const activeLessonExamples = currentLessonMode === 'standard' 
                       ? (activeLesson.grammarNotes[currentGrammarPageIndex].examples || []) 
@@ -13416,7 +13946,7 @@ startxref
                   })() : null}
 
                   {/* Grammar Note Pagination Footer Controls */}
-                  {activeLesson.grammarNotes.length > 1 && (
+                  {grammarNotesList.length > 1 && (
                     <div className="flex items-center justify-between mt-6 bg-white px-6 py-4 rounded-2xl border-2 border-gray-100/80 shadow-xs select-none">
                       <button
                         onClick={() => setCurrentGrammarPageIndex(prev => Math.max(0, prev - 1))}
@@ -13432,7 +13962,7 @@ startxref
                       </button>
                       
                       <div className="flex items-center gap-1.5">
-                        {activeLesson.grammarNotes.map((_, idx) => (
+                        {grammarNotesList.map((_, idx) => (
                           <button
                             key={idx}
                             onClick={() => setCurrentGrammarPageIndex(idx)}
@@ -13448,10 +13978,10 @@ startxref
                       </div>
 
                       <button
-                        onClick={() => setCurrentGrammarPageIndex(prev => Math.min(activeLesson.grammarNotes.length - 1, prev + 1))}
-                        disabled={currentGrammarPageIndex === activeLesson.grammarNotes.length - 1}
+                        onClick={() => setCurrentGrammarPageIndex(prev => Math.min(grammarNotesList.length - 1, prev + 1))}
+                        disabled={currentGrammarPageIndex === grammarNotesList.length - 1}
                         className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-sans font-black tracking-wider transition-all cursor-pointer border border-gray-100 ${
-                          currentGrammarPageIndex === activeLesson.grammarNotes.length - 1
+                          currentGrammarPageIndex === grammarNotesList.length - 1
                             ? 'opacity-30 cursor-not-allowed bg-gray-50 text-gray-400'
                             : 'bg-white hover:bg-gray-50 text-brand-purple active:translate-y-0.5 shadow-3xs'
                         }`}
@@ -13462,8 +13992,9 @@ startxref
                     </div>
                   )}
                   </div>
-                )
-              )}
+                );
+              })()
+            )}
 
               {activeTab === 'quiz' && activeLesson && (
                 <QuizView

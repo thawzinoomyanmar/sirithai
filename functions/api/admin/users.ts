@@ -18,12 +18,24 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       return jsonResponse({ success: false, error: 'D1 database binding missing' }, 500);
     }
 
-    let { results } = await db.prepare('SELECT id, full_name, email, avatar_url, role, phone, xp, created_at FROM users_profile ORDER BY created_at DESC').all();
+    let results: any[] = [];
+    try {
+      const res = await db.prepare('SELECT * FROM users_profile ORDER BY created_at DESC').all();
+      results = res.results || [];
+    } catch (err1) {
+      try {
+        const res = await db.prepare('SELECT * FROM users_profile').all();
+        results = res.results || [];
+      } catch (err2: any) {
+        console.error('[Admin Users API Error]:', err2);
+        return jsonResponse({ success: false, error: err2?.message || String(err2) }, 500);
+      }
+    }
 
     return jsonResponse({
       success: true,
-      data: results || [],
-      count: (results || []).length
+      data: results,
+      count: results.length
     });
   } catch (err: any) {
     console.error('[Admin Users API Error]:', err);

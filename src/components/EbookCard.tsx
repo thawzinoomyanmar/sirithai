@@ -39,11 +39,8 @@ export const EbookCard: React.FC<EbookCardProps> = React.memo(({ item, currentUs
         const data: any = await res.json();
         
         if (isMounted) {
-          if (data.success && data.status) {
-            setAccessStatus(data.status);
-          } else {
-            setAccessStatus('locked');
-          }
+          const nextStatus = (data.success && data.status) ? data.status : 'locked';
+          setAccessStatus(prev => prev === nextStatus ? prev : nextStatus);
         }
       } catch (err) {
         console.error('Failed to fetch user access:', err);

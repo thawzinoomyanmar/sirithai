@@ -1,29 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Volume2, Search, Book, Sparkles } from 'lucide-react';
+import { ArrowLeft, Volume2, Search, Book, Sparkles, BookOpen, FileText } from 'lucide-react';
 import { VocabCategory, VocabItem } from '../types';
-import { useDynamicData } from '../hooks/useApiData';
+import { useVocabCategories, useVocabItems } from '../hooks/useApiData';
 import { localDB } from '../utils/db';
+import { VocabCard } from './VocabCard';
+import { playGlobalAudio, speakGlobalText } from '../utils/audioManager';
+
+const renderCategoryIcon = (icon?: string, sizeClass: string = "w-4 h-4") => {
+  if (!icon) return <BookOpen className={`${sizeClass} shrink-0`} />;
+  if (icon.startsWith('http') || icon.startsWith('data:') || icon.startsWith('/')) {
+    return <img src={icon} alt="Category Icon" className={`${sizeClass} object-contain rounded shrink-0`} />;
+  }
+  const clean = icon.trim().toLowerCase();
+  if (clean === 'bookopen' || clean === 'book' || clean === 'filetext' || /^[a-z0-9_-]+$/.test(clean)) {
+    return <BookOpen className={`${sizeClass} shrink-0`} />;
+  }
+  return <span className="text-sm shrink-0 leading-none">{icon}</span>;
+};
 
 interface VocabPageProps {
   onClose: () => void;
 }
 
 export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
-  const { dynamicData, isLoading } = useDynamicData();
-  const apiCategories = dynamicData?.vocab_categories || [];
+  const { categories: apiCategories, isLoading } = useVocabCategories();
 
   const [categories, setCategories] = useState<VocabCategory[]>([]);
-  const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
 
   useEffect(() => {
-    if (apiCategories.length > 0) {
+    if (Array.isArray(apiCategories) && apiCategories.length > 0) {
       setCategories(apiCategories);
-      if (!selectedCategoryName) {
-        setSelectedCategoryName(apiCategories[0].name);
-      }
+      setSelectedCategoryId(prev => (!prev || !apiCategories.some((c: any) => c.id === prev || c.name === prev)) ? apiCategories[0].id : prev);
     }
-  }, [apiCategories, selectedCategoryName]);
+  }, [apiCategories]);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -32,8 +43,8 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
         try {
           const parsed = JSON.parse(saved);
           setCategories(parsed);
-          if (parsed.length > 0 && !parsed.some((c: any) => c.name === selectedCategoryName)) {
-            setSelectedCategoryName(parsed[0].name);
+          if (parsed.length > 0) {
+            setSelectedCategoryId(prev => (!prev || !parsed.some((c: any) => c.id === prev || c.name === prev)) ? parsed[0].id : prev);
           }
         } catch (e) {
           console.error("Error parsing saved vocab book categories in VocabPage:", e);
@@ -44,30 +55,26 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
     return () => {
       window.removeEventListener('thai_vocab_book_categories_updated', handleUpdate);
     };
-  }, [selectedCategoryName]);
-  
+  }, []);
+
+  const { items: categoryItems } = useVocabItems(selectedCategoryId);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [playingWord, setPlayingWord] = useState<string | null>(null);
 
-  const currentCategory = categories.find(c => c.name === selectedCategoryName) || categories[0] || { name: '', icon: '', items: [] };
+  const currentCategory = categories.find(c => c.id === selectedCategoryId || c.name === selectedCategoryId) || categories[0] || { id: '', name: '', icon: '', items: [] };
 
-  // Watch for dynamic category deletion from admin selection side
-  useEffect(() => {
-    if (categories.length > 0 && !categories.some(c => c.name === selectedCategoryName)) {
-      setSelectedCategoryName(categories[0].name);
-    }
-  }, [categories, selectedCategoryName]);
+  const rawItems = categoryItems.length > 0 ? categoryItems : (currentCategory.items || []);
 
-  // Search across either the selected category or all of them
-  const filteredItems = (currentCategory.items || []).filter(item => {
+  // Search across items
+  const filteredItems = (rawItems || []).filter(item => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
     return (
-      item.thai.toLowerCase().includes(q) ||
-      item.phonetic.toLowerCase().includes(q) ||
-      item.phoneticMm.toLowerCase().includes(q) ||
-      item.english.toLowerCase().includes(q) ||
-      item.myanmar.toLowerCase().includes(q)
+      (item.thai || '').toLowerCase().includes(q) ||
+      (item.phonetic || '').toLowerCase().includes(q) ||
+      (item.phoneticMm || '').toLowerCase().includes(q) ||
+      (item.english || '').toLowerCase().includes(q) ||
+      (item.myanmar || '').toLowerCase().includes(q)
     );
   });
 
@@ -81,16 +88,13 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
       if (match && (match.audio_blob || match.audio_url)) {
         setPlayingWord(text);
         const audioUrl = match.audio_blob ? URL.createObjectURL(match.audio_blob) : match.audio_url!;
-        const audio = new Audio(audioUrl);
-        
-        audio.onended = () => setPlayingWord(null);
-        audio.onerror = () => setPlayingWord(null);
-        
-        audio.play().catch(err => {
-          console.warn("Audio play failed, falling back to TTS:", err);
-          // Fall back to TTS if audio playback fails
-          runTTS(text);
-        });
+        const audio = playGlobalAudio(audioUrl);
+        if (audio) {
+          audio.onended = () => setPlayingWord(null);
+          audio.onerror = () => setPlayingWord(null);
+        } else {
+          setPlayingWord(null);
+        }
         return;
       }
     } catch (e) {
@@ -100,23 +104,9 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
   };
 
   const runTTS = (text: string) => {
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'th-TH';
-      utterance.rate = 0.85; // slightly slower for better learning
-      
-      utterance.onstart = () => setPlayingWord(text);
-      utterance.onend = () => setPlayingWord(null);
-      utterance.onerror = () => setPlayingWord(null);
-
-      window.speechSynthesis.speak(utterance);
-    } else {
-      // Fallback blink animation
-      setPlayingWord(text);
-      setTimeout(() => setPlayingWord(null), 800);
-    }
+    setPlayingWord(text);
+    speakGlobalText(text, 'th-TH', 0.85);
+    setTimeout(() => setPlayingWord(null), 1200);
   };
 
   if (isLoading) {
@@ -164,8 +154,8 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
           
           <div className="text-left min-w-0 flex-1">
             <h3 className="font-sans font-black text-slate-800 text-sm sm:text-lg tracking-tight leading-snug flex items-center gap-2">
-              <span className="p-1.5 bg-brand-purple/10 rounded-xl inline-flex text-brand-purple shrink-0">
-                <Book className="w-5 h-5 stroke-[2.5]" />
+              <span className="p-1.5 bg-brand-purple/10 rounded-xl inline-flex text-black shrink-0">
+                <Book className="w-5 h-5 mr-3 text-black stroke-2" strokeWidth={2} />
               </span>
               <span className="truncate">Classroom Vocabulary Book</span>
             </h3>
@@ -204,12 +194,12 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
         <div className="block md:hidden px-4 py-3 bg-white border-b border-slate-100 select-none">
           <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin select-none snap-x check-scrollbar">
             {categories.map((cat) => {
-              const isSelected = cat.name === selectedCategoryName;
+              const isSelected = cat.id === selectedCategoryId || cat.name === selectedCategoryId;
               return (
                 <button
-                  key={cat.name}
+                  key={cat.id || cat.name}
                   onClick={() => {
-                    setSelectedCategoryName(cat.name);
+                    setSelectedCategoryId(cat.id || cat.name);
                     setSearchQuery('');
                   }}
                   className={`px-4 py-1.5 rounded-full text-xs font-bold leading-normal transition-all shrink-0 cursor-pointer snap-start flex items-center gap-1.5 ${
@@ -218,7 +208,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <span className="text-sm">{cat.icon}</span> 
+                  {renderCategoryIcon(cat.icon, "w-4 h-4")}
                   <span>{cat.name}</span>
                 </button>
               );
@@ -229,12 +219,12 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
         {/* Sidebar Vertical Panel on desktop (hidden on mobile) */}
         <div className="hidden md:flex md:w-[230px] md:flex-col border-r border-slate-100 bg-slate-50/20 md:overflow-y-auto p-2 gap-1.5 shrink-0">
           {categories.map((cat) => {
-            const isSelected = cat.name === selectedCategoryName;
+            const isSelected = cat.id === selectedCategoryId || cat.name === selectedCategoryId;
             return (
               <button
-                key={cat.name}
+                key={cat.id || cat.name}
                 onClick={() => {
-                  setSelectedCategoryName(cat.name);
+                  setSelectedCategoryId(cat.id || cat.name);
                   setSearchQuery('');
                 }}
                 className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-sans text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap shrink-0 md:w-full text-left ${
@@ -243,7 +233,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
                     : 'text-brand-muted hover:text-brand-dark hover:bg-slate-100'
                 }`}
               >
-                <span className="text-base">{cat.icon}</span>
+                {renderCategoryIcon(cat.icon, "w-4 h-4")}
                 <span>{cat.name}</span>
               </button>
             );
@@ -271,62 +261,12 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
                 const pastelClass = pastelColors[idx % pastelColors.length];
 
                 return (
-                  <div
+                  <VocabCard
                     key={idx}
-                    className={`p-3.5 sm:p-4 bg-white rounded-3xl border transition-all flex items-center justify-between gap-4 relative overflow-hidden group ${
-                      isSpeaking 
-                        ? 'border-brand-purple shadow-xs bg-brand-purple/5' 
-                        : 'border-slate-100 hover:border-slate-200 hover:shadow-xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      {/* Left side Visual Illustration beautiful pastel badge */}
-                      <div className={`w-14 h-14 sm:w-16 sm:h-16 ${pastelClass} rounded-2xl flex items-center justify-center text-3xl shrink-0 select-none transition-transform duration-300 group-hover:scale-105`}>
-                        {item.illustration}
-                      </div>
-
-                      <div className="flex-1 min-w-0 text-left space-y-1 sm:space-y-1.5">
-                        {/* Thai Writing & green pronunciation spelling */}
-                        <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="font-sans font-extrabold text-lg sm:text-[19px] text-[#222] select-all tracking-wide">
-                            {item.thai}
-                          </span>
-                          <span className="text-xs sm:text-sm font-bold text-emerald-600 select-all">
-                            ({item.phonetic})
-                          </span>
-                        </div>
-
-                        {/* Myanmar Definition below the Thai word */}
-                        <div className="font-sans font-bold text-[13.5px] sm:text-[15px] text-slate-750 leading-tight select-all">
-                          {item.myanmar}
-                        </div>
-
-                        {/* Secondary info breakdown */}
-                        <div className="flex items-center gap-2 flex-wrap pt-0.5 text-[10px] text-slate-400 select-all font-sans font-bold">
-                          <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-extrabold text-[9px]">
-                            {item.phoneticMm}
-                          </span>
-                          <span>•</span>
-                          <span className="text-slate-500">
-                            {item.english}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right side tidy speaker button */}
-                    <button
-                      onClick={() => handleSpeak(item.thai)}
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center shrink-0 border transition-all cursor-pointer ${
-                        isSpeaking
-                          ? 'bg-brand-purple text-white border-brand-purple shadow-xs'
-                          : 'bg-white hover:bg-slate-50 text-slate-500 hover:text-brand-purple border-slate-200 hover:border-brand-purple/25 shadow-3xs group-hover:scale-105'
-                      }`}
-                      title="Listen Pronunciation"
-                    >
-                      <Volume2 className={`w-4 h-4 sm:w-4.5 sm:h-4.5 ${isSpeaking ? 'animate-pulse text-white' : ''}`} />
-                    </button>
-                  </div>
+                    item={item}
+                    onSpeak={handleSpeak}
+                    isSpeaking={isSpeaking}
+                  />
                 );
               })}
             </div>

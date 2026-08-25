@@ -35,7 +35,10 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     
     // Check against expected schema
     const id = body.id || null;
-    const course_id = body.course_id || 'course-basic';
+    const course_id = body.course_id;
+    if (!course_id) {
+      return jsonResponse({ success: false, error: 'course_id is required' }, 400);
+    }
     const title_thai = body.title_thai || '';
     const title_phonetic = body.title_phonetic || '';
     const title_english = body.title_english || '';

@@ -29,10 +29,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   if (!db) {
     return jsonResponse({
       success: false,
-      error: 'D1 Binding Missing or Invalid Token',
+      error: 'D1 database binding (env.DB) is not attached to the function runtime.',
       code: 'D1_BINDING_MISSING',
-      details: 'D1 database binding (env.DB) is not attached to function runtime. Queued for offline sync.',
-      offline_queued: true
     }, 503);
   }
 
@@ -83,7 +81,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     }
 
     const finalId = (body.id && String(body.id).trim()) || `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
-    const user_id = body.user_id ? String(body.user_id).trim() : 'anonymous';
+    const user_id = body.user_id ? String(body.user_id).trim() : null;
     const course_id = body.course_id ? String(body.course_id).trim() : '';
     const parsedAmount = parseFloat(body.amount);
     const amount = isNaN(parsedAmount) ? 0.0 : parsedAmount;

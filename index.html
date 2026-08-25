@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Thai-Myanmar Vocabulary & Grammar Builder</title>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#8234ea" />
@@ -16,14 +19,20 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Force unregister stale service workers and clear cache storage
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((reg) => console.log('[PWA] Service Worker registered with scope:', reg.scope))
-            .catch((err) => console.error('[PWA] Service Worker registration failed:', err));
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (let registration of registrations) {
+            registration.unregister();
+            console.log('[Cache Buster] Unregistered stale Service Worker');
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (let name of names) caches.delete(name);
         });
       }
     </script>
   </body>
 </html>
-

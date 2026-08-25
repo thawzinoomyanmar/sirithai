@@ -18,14 +18,18 @@ export const LessonItem: React.FC<LessonItemProps> = React.memo(({
   getMyanmarPhonetic,
   onClick
 }) => {
+  const titleMyanmar = lesson.titleMyanmar || (lesson as any).title_myanmar || '';
+  const descriptionText = lesson.description || lesson.descriptionMyanmar || lesson.descriptionEnglish || (lesson as any).detail_description || '';
+  const displayDesc = descriptionText && descriptionText !== titleMyanmar ? descriptionText : '';
+
   return (
     <motion.div
-      className="duo-card p-6 bg-white flex flex-col justify-between hover:shadow-md transition-all duration-200 cursor-pointer"
+      className="duo-card p-6 bg-white flex flex-col justify-between hover:shadow-md transition-all duration-200 cursor-pointer h-auto text-left relative overflow-hidden"
       whileHover={{ y: -2 }}
-      onClick={() => onClick(lesson.id)}
+      onClick={() => onClick(String(lesson.id))}
     >
-      <div>
-        <div className="flex justify-between items-start">
+      <div className="flex-1 flex flex-col gap-1.5 min-h-[120px]">
+        <div className="flex justify-between items-start mb-1">
           <span className="text-[10px] font-sans text-white bg-brand-purple px-2.5 py-1 rounded-full border-b-2 border-brand-purple-shadow font-extrabold select-none">
             LESSON {lesson.id}
           </span>
@@ -36,10 +40,10 @@ export const LessonItem: React.FC<LessonItemProps> = React.memo(({
           )}
         </div>
 
-        <h4 className="text-sm font-sans font-black text-[#3c3c3c] mt-4 leading-tight">
+        <h4 className="text-sm font-sans font-black text-[#3c3c3c] mt-2 leading-tight">
           {lesson.titleEnglish}
         </h4>
-        <p className="text-xs font-sans text-brand-green font-extrabold mt-1" style={{ wordBreak: 'break-word' }}>
+        <p className="text-xs font-sans text-brand-green font-extrabold mt-0.5" style={{ wordBreak: 'break-word' }}>
           <span className="italic">{lesson.titlePhonetic}</span> ({lesson.titleThai})
         </p>
         {lesson.titlePhonetic && (
@@ -48,17 +52,28 @@ export const LessonItem: React.FC<LessonItemProps> = React.memo(({
           </p>
         )}
 
-        <p className="text-[11px] text-brand-muted font-sans mt-3 line-clamp-2 leading-relaxed font-bold">
-          {lesson.descriptionMyanmar}
-        </p>
+        {(titleMyanmar || descriptionText) && (
+          <p className="mt-3 text-gray-700 text-sm leading-relaxed font-medium">
+            {titleMyanmar || descriptionText}
+          </p>
+        )}
+
+        {displayDesc && (
+          <p className="mt-2 text-gray-600 text-xs leading-relaxed">
+            {displayDesc}
+          </p>
+        )}
       </div>
 
-      <div className="mt-6 pt-4 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-6 -mb-6 p-4 rounded-b-2xl">
+      <div className="mt-5 pt-4 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 -mx-6 -mb-6 p-4 rounded-b-2xl">
         <span className="text-[10px] font-sans text-brand-muted font-extrabold tracking-wider uppercase">
           SCORE: {score}%
         </span>
         <button
-          onClick={() => onClick(lesson.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick(String(lesson.id));
+          }}
           className="duo-btn duo-btn-purple text-xs px-4 py-2.5 flex items-center gap-1.5 font-bold"
         >
           Study Lesson • လေ့လာမည်

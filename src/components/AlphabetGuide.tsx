@@ -16,13 +16,58 @@ import {
   Award,
   RotateCcw
 } from 'lucide-react';
-import { 
-  thaiConsonants, 
-  thaiVowels, 
-  ConsonantInfo, 
-  VowelInfo 
-} from '../data/alphabet';
 import { getMyanmarPhonetic } from '../utils/sentenceUtils';
+
+export interface AlphabetItem {
+  id?: number | string;
+  char?: string;
+  character?: string;
+  letter?: string;
+  name_thai?: string;
+  name?: string;
+  name_phonetic?: string;
+  phonetic?: string;
+  namePhonetic?: string;
+  name_myanmar?: string;
+  meaning?: string;
+  phonetic_mm?: string;
+  nameMyanmar?: string;
+  type?: string;
+  class?: string;
+  order_index?: number;
+}
+
+export interface ConsonantInfo {
+  char: string;
+  name: string;
+  name_thai?: string;
+  namePhonetic: string;
+  name_phonetic?: string;
+  nameEnglish: string;
+  nameMyanmar: string;
+  name_myanmar?: string;
+  class: 'mid' | 'high' | 'low' | 'Mid' | 'High' | 'Low' | string;
+  soundInitial: string;
+  soundFinal: string;
+  myanmarSound: string;
+  type?: string;
+}
+
+export interface VowelInfo {
+  char: string;
+  phonetic: string;
+  name_phonetic?: string;
+  english: string;
+  myanmar: string;
+  name_myanmar?: string;
+  length: 'short' | 'long' | string;
+  myanmarSound: string;
+  exampleThai: string;
+  examplePhonetic: string;
+  exampleEnglish: string;
+  type?: string;
+  class?: string;
+}
 
 interface AlphabetGuideProps {
   speakText: (text: string) => void;
@@ -33,9 +78,10 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
   const [activeSubTab, setActiveSubTab] = useState<'consonants' | 'vowels'>('consonants');
   const [studyMode, setStudyMode] = useState<'grid' | 'flashcard'>('grid');
   
-  // Dynamic D1 datasets with static fallbacks
-  const [consonants, setConsonants] = useState<ConsonantInfo[]>(thaiConsonants);
-  const [vowels, setVowels] = useState<VowelInfo[]>(thaiVowels);
+  // Dynamic D1 datasets
+  const [alphabets, setAlphabets] = useState<AlphabetItem[]>([]);
+  const [consonants, setConsonants] = useState<ConsonantInfo[]>([]);
+  const [vowels, setVowels] = useState<VowelInfo[]>([]);
 
   // Search and Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,28 +89,90 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
   const [vowelLengthFilter, setVowelLengthFilter] = useState<'all' | 'short' | 'long'>('all');
   
   // Selection / Detail focused states
-  const [selectedConsonant, setSelectedConsonant] = useState<ConsonantInfo>(thaiConsonants[0]);
-  const [selectedVowel, setSelectedVowel] = useState<VowelInfo>(thaiVowels[0]);
+  const [selectedConsonant, setSelectedConsonant] = useState<ConsonantInfo | null>(null);
+  const [selectedVowel, setSelectedVowel] = useState<VowelInfo | null>(null);
 
   useEffect(() => {
-    const fetchAlphabet = async () => {
+    const fetchAlphabetData = async () => {
       try {
-        const response = await fetch('/api/dynamic-data?key=alphabet');
-        const contentType = response.headers.get('content-type');
-        if (response.ok && contentType && contentType.includes('application/json')) {
-          const data: any = await response.json();
-          if (data && data.consonants && data.vowels) {
-            setConsonants(data.consonants);
-            setVowels(data.vowels);
-            setSelectedConsonant(data.consonants[0]);
-            setSelectedVowel(data.vowels[0]);
+        const response = await fetch('/api/alphabet');
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
+          const resData: any = await response.json();
+          const fetchedData: any[] = Array.isArray(resData?.data)
+            ? resData.data
+            : (Array.isArray(resData) ? resData : []);
+
+          setAlphabets(fetchedData || []);
+
+          if (fetchedData.length > 0) {
+            const mappedConsonants: ConsonantInfo[] = fetchedData
+              .filter((item: any) => (item.type || 'consonant').toLowerCase() === 'consonant')
+              .map((item: any) => {
+                const char = item.char || item.character || item.letter || '';
+                const nameThai = item.name_thai || item.name || char;
+                const namePhonetic = item.name_phonetic || item.phonetic || item.namePhonetic || '';
+                const nameMyanmar = item.name_myanmar || item.meaning || item.phonetic_mm || item.nameMyanmar || '';
+                const rawClass = item.class || 'Mid';
+                const formattedClass = rawClass.charAt(0).toUpperCase() + rawClass.slice(1).toLowerCase();
+
+                return {
+                  char,
+                  name: nameThai,
+                  name_thai: nameThai,
+                  namePhonetic: namePhonetic,
+                  name_phonetic: namePhonetic,
+                  nameEnglish: item.name_english || item.meaning || namePhonetic,
+                  nameMyanmar: nameMyanmar,
+                  name_myanmar: nameMyanmar,
+                  class: formattedClass as any,
+                  type: 'consonant',
+                  soundInitial: item.sound_initial || item.soundInitial || (namePhonetic ? namePhonetic.split(' ')[0] : ''),
+                  soundFinal: item.sound_final || item.soundFinal || (namePhonetic && namePhonetic.split(' ').length > 1 ? namePhonetic.split(' ')[1] : '-'),
+                  myanmarSound: item.myanmar_sound || nameMyanmar || namePhonetic
+                };
+              });
+
+            const mappedVowels: VowelInfo[] = fetchedData
+              .filter((item: any) => (item.type || '').toLowerCase() === 'vowel')
+              .map((item: any) => {
+                const char = item.char || item.character || item.letter || '';
+                const namePhonetic = item.name_phonetic || item.phonetic || item.namePhonetic || '';
+                const nameMyanmar = item.name_myanmar || item.meaning || item.phonetic_mm || item.nameMyanmar || '';
+                const rawClass = item.class || 'Short';
+                const len = rawClass.toLowerCase() === 'long' ? 'long' : 'short';
+
+                return {
+                  char,
+                  phonetic: namePhonetic,
+                  name_phonetic: namePhonetic,
+                  english: item.name_english || item.meaning || '',
+                  myanmar: nameMyanmar,
+                  name_myanmar: nameMyanmar,
+                  length: len,
+                  type: 'vowel',
+                  myanmarSound: item.myanmar_sound || nameMyanmar,
+                  exampleThai: item.example_thai || item.exampleThai || char,
+                  examplePhonetic: item.example_phonetic || item.examplePhonetic || namePhonetic,
+                  exampleEnglish: item.example_english || item.exampleEnglish || item.name_english || ''
+                };
+              });
+
+            if (mappedConsonants.length > 0) {
+              setConsonants(mappedConsonants);
+              setSelectedConsonant(mappedConsonants[0]);
+            }
+            if (mappedVowels.length > 0) {
+              setVowels(mappedVowels);
+              setSelectedVowel(mappedVowels[0]);
+            }
           }
         }
       } catch (err) {
-        console.error("Failed loading dynamic alphabet from D1:", err);
+        console.error("Error fetching alphabets from D1:", err);
       }
     };
-    fetchAlphabet();
+    fetchAlphabetData();
   }, []);
   
   // Flashcard Index tracking
@@ -77,24 +185,33 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
 
   // Filter processes
   const filteredConsonants = consonants.filter(item => {
-    const matchesSearch = 
-      item.char.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.namePhonetic.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.nameEnglish.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.myanmarSound.includes(searchQuery);
+    const char = item.char || '';
+    const nameThai = item.name_thai || item.name || '';
+    const namePhonetic = item.name_phonetic || item.namePhonetic || '';
+    const nameMyanmar = item.name_myanmar || item.nameMyanmar || item.myanmarSound || '';
+    const itemClass = String(item.class || 'Mid').toLowerCase();
+
+    const matchesSearch = searchQuery.trim() === '' ||
+      char.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      nameThai.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      namePhonetic.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      nameMyanmar.toLowerCase().includes(searchQuery.toLowerCase());
       
-    const matchesClass = consonantClassFilter === 'all' || item.class === consonantClassFilter;
+    const matchesClass = consonantClassFilter === 'all' || itemClass === consonantClassFilter.toLowerCase();
     return matchesSearch && matchesClass;
   });
 
   const filteredVowels = vowels.filter(item => {
-    const matchesSearch = 
-      item.char.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.phonetic.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.english.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.myanmarSound.includes(searchQuery) ||
-      item.exampleThai.includes(searchQuery);
+    const char = item.char || '';
+    const phonetic = item.name_phonetic || item.phonetic || '';
+    const english = item.english || '';
+    const myanmar = item.name_myanmar || item.myanmar || item.myanmarSound || '';
+
+    const matchesSearch = searchQuery.trim() === '' ||
+      char.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      phonetic.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      english.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      myanmar.toLowerCase().includes(searchQuery.toLowerCase());
       
     const matchesLength = vowelLengthFilter === 'all' || item.length === vowelLengthFilter;
     return matchesSearch && matchesLength;
@@ -163,7 +280,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
     if (score >= 90) {
       setScoreFeedback("Perfect Accent! Excellent tonal accuracy • အသံထွက် ကောင်းမွန်လွန်းလှပါသည်။");
     } else if (score >= 75) {
-      setScoreFeedback("Great Pronunciation! Very clear tones • အသံထွက် တิကျမှန်ကန်ပါသည်။");
+      setScoreFeedback("Great Pronunciation! Very clear tones • အသံထွက် တိကျမှန်ကန်ပါသည်။");
     } else if (score >= 50) {
       setScoreFeedback("Good effort! Focus on vowel length • အသံထွက် ပြင်ဆင်ရန် အနည်းငယ် လိုအပ်ပါသည်။");
     } else {
@@ -247,12 +364,38 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
     }
   };
 
+  const formatThaiForTTS = (item: any): string => {
+    if (!item) return '';
+    // Replace dash "-" with silent consonant "อ" (O Ang) for vowels (e.g., "-า" -> "อา", "เ-ะ" -> "เอะ")
+    if (item.type === 'vowel' || (item.char && item.char.includes('-'))) {
+      if (item.char) {
+        return item.char.replace(/-/g, 'อ');
+      }
+    }
+    // For consonants, prefer name_thai (e.g., "ก ไก่")
+    if (item.type === 'consonant') {
+      return item.name_thai || item.name || item.char || '';
+    }
+    return item.name_thai || item.name || item.exampleThai || item.char || '';
+  };
+
+  const handlePlayItemAudio = (item: any) => {
+    if (!item) return;
+    const textToSpeak = formatThaiForTTS(item);
+    handleSpeak(textToSpeak);
+  };
+
   const handleSpeak = (text: string) => {
-    speakText(text);
+    let textToSpeak = text;
+    if (textToSpeak && textToSpeak.includes('-')) {
+      textToSpeak = textToSpeak.replace(/-/g, 'อ');
+    }
+    speakText(textToSpeak);
   };
 
   const handleNextConsonant = () => {
     const list = filteredConsonants.length > 0 ? filteredConsonants : consonants;
+    if (!selectedConsonant || list.length === 0) return;
     const currentIndex = list.findIndex(c => c.char === selectedConsonant.char);
     if (currentIndex !== -1) {
       const nextIndex = (currentIndex + 1) % list.length;
@@ -268,6 +411,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
 
   const handlePrevConsonant = () => {
     const list = filteredConsonants.length > 0 ? filteredConsonants : consonants;
+    if (!selectedConsonant || list.length === 0) return;
     const currentIndex = list.findIndex(c => c.char === selectedConsonant.char);
     if (currentIndex !== -1) {
       const prevIndex = (currentIndex - 1 + list.length) % list.length;
@@ -283,6 +427,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
 
   const handleNextVowel = () => {
     const list = filteredVowels.length > 0 ? filteredVowels : vowels;
+    if (!selectedVowel || list.length === 0) return;
     const currentIndex = list.findIndex(v => v.char === selectedVowel.char);
     if (currentIndex !== -1) {
       const nextIndex = (currentIndex + 1) % list.length;
@@ -292,6 +437,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
 
   const handlePrevVowel = () => {
     const list = filteredVowels.length > 0 ? filteredVowels : vowels;
+    if (!selectedVowel || list.length === 0) return;
     const currentIndex = list.findIndex(v => v.char === selectedVowel.char);
     if (currentIndex !== -1) {
       const prevIndex = (currentIndex - 1 + list.length) % list.length;
@@ -299,8 +445,9 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
     }
   };
 
-  const getConsonantClassStyles = (classification: 'mid' | 'high' | 'low') => {
-    switch (classification) {
+  const getConsonantClassStyles = (classification: string) => {
+    const cls = String(classification || 'Mid').toLowerCase();
+    switch (cls) {
       case 'mid':
         return {
           bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/50',
@@ -314,6 +461,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
           label: 'High Class • အသံမြင့်စု',
         };
       case 'low':
+      default:
         return {
           bg: 'bg-amber-50 text-amber-700 border-amber-200/50',
           dot: 'bg-amber-500',
@@ -825,7 +973,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                         key={item.char}
                         onClick={() => {
                           setSelectedVowel(item);
-                          handleSpeak(item.exampleThai);
+                          handlePlayItemAudio(item);
                         }}
                         className={`duo-card p-3 flex flex-col items-center justify-between border-b-4 transition-all min-h-[120px] outline-none bg-white cursor-pointer ${
                           isSelected
@@ -1068,7 +1216,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                         initial={{ scale: 0.9, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         className="w-32 h-32 bg-[#f4f7fe] border-3 border-indigo-200 rounded-3xl flex items-center justify-center text-5xl sm:text-6xl font-sans font-black text-indigo-600 shadow-md relative group select-all cursor-pointer hover:bg-indigo-50 transition-colors"
-                        onClick={() => handleSpeak(item.exampleThai)}
+                        onClick={() => handlePlayItemAudio(item)}
                       >
                         {item.char}
                         <div className="absolute bottom-2 right-2 p-1 bg-white border border-gray-150 rounded-lg text-brand-muted shadow-3xs group-hover:text-indigo-600 transition-colors">

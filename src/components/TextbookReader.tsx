@@ -489,7 +489,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
 
   const apiBlueBook = React.useMemo(() => {
     if (!dynamicData?.lessons) return [];
-    return dynamicData.lessons.map((l: any) => ({
+    const mapped = dynamicData.lessons.map((l: any) => ({
       id: l.id,
       titleMm: l.titleMyanmar || l.titleThai,
       titleEn: l.titleEnglish || l.titleThai,
@@ -499,6 +499,21 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
         phonetic: d.phonetic
       }))
     }));
+    return mapped.sort((a: any, b: any) => {
+      const aIdNum = Number(a.id);
+      const bIdNum = Number(b.id);
+      if (!isNaN(aIdNum) && !isNaN(bIdNum) && String(a.id ?? '').trim() !== '' && String(b.id ?? '').trim() !== '') {
+        return aIdNum - bIdNum;
+      }
+      const aMatch = String(a.id ?? '').match(/\d+/);
+      const bMatch = String(b.id ?? '').match(/\d+/);
+      if (aMatch && bMatch && String(a.id ?? '').toLowerCase().replace(/\d+/, '') === String(b.id ?? '').toLowerCase().replace(/\d+/, '')) {
+        return parseInt(aMatch[0], 10) - parseInt(bMatch[0], 10);
+      }
+      const aTitle = String(a.titleEn || a.titleMm || a.id || '');
+      const bTitle = String(b.titleEn || b.titleMm || b.id || '');
+      return aTitle.localeCompare(bTitle, undefined, { numeric: true, sensitivity: 'base' });
+    });
   }, [dynamicData?.lessons]);
 
   const apiGrammarChapters = dynamicData?.grammar_chapters || [];
@@ -506,13 +521,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
   const apiVowels = (dynamicData?.alphabet || []).filter((a: any) => a.type === 'vowel');
 
   const [activeLesson, setActiveLesson] = useState<number>(0);
-  const [blueBook, setBlueBook] = useState<any[]>(apiBlueBook);
-
-  useEffect(() => {
-    if (apiBlueBook.length > 0) {
-      setBlueBook(apiBlueBook);
-    }
-  }, [apiBlueBook]);
+  const blueBook = apiBlueBook;
 
   // Premium Custom States for sentence builder
   const [selectedPremiumSubject, setSelectedPremiumSubject] = useState(PREMIUM_SUBJECTS[0]);
@@ -823,13 +832,13 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
           chapters: apiGrammarChapters.map((chap: any) => {
             const items: { idx: number; myanmar: string; thai: string; phonetic: string }[] = [];
             let count = 1;
-            chap.rules.forEach((rule: any) => {
-              rule.examples.forEach((ex: any) => {
+            (chap.rules || []).forEach((rule: any) => {
+              (rule.examples || []).forEach((ex: any) => {
                 items.push({
                   idx: count++,
-                  myanmar: `${rule.titleMyanmar} • ${ex.myanmar}`,
-                  thai: ex.thai,
-                  phonetic: ex.phonetic
+                  myanmar: `${rule.titleMyanmar || ''} • ${ex.myanmar || ''}`,
+                  thai: ex.thai || '',
+                  phonetic: ex.phonetic || ''
                 });
               });
             });

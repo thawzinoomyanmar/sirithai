@@ -8,18 +8,6 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     return handleOptions();
   }
 
-  if (method !== 'POST') {
-    return jsonResponse({ error: 'Method Not Allowed' }, 405);
-  }
-
-  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
-  const staticAdminHeader = req.headers.get('x-static-admin') || req.headers.get('X-Static-Admin');
-  const isAuthorized = staticAdminHeader === 'true' || authHeader === 'Bearer admin-local-session' || process.env.NODE_ENV !== 'production';
-
-  if (!isAuthorized) {
-    return jsonResponse({ error: '403 Forbidden Access: Invalid or missing administrator credentials.' }, 403);
-  }
-
   const db = getDB(context);
   if (!db) {
     return jsonResponse({
@@ -32,34 +20,56 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS alphabet (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT,
+        type TEXT DEFAULT 'consonant',
         character TEXT,
+        char TEXT,
         name_thai TEXT,
-        name_phonetic TEXT
+        name_phonetic TEXT,
+        name_myanmar TEXT,
+        class TEXT DEFAULT 'Mid',
+        order_index INTEGER DEFAULT 0
       )
     `).run();
 
-    const body: any = await req.json().catch(() => ({}));
-    const id = body.id || null;
-    const type = body.type || 'consonant';
-    const character = body.character || '';
-    const name_thai = body.name_thai || '';
-    const name_phonetic = body.name_phonetic || '';
+    const cols = ['char', 'character', 'name_thai', 'name_phonetic', 'name_myanmar', 'type', 'class', 'order_index'];
+    for (const col of cols) {
+      try {
+        await db.prepare(`ALTER TABLE alphabet ADD COLUMN ${col} TEXT`).run();
+      } catch {}
+    }
 
-    const sql = `
-      INSERT OR REPLACE INTO alphabet (id, type, character, name_thai, name_phonetic)
-      VALUES (?, ?, ?, ?, ?)
-    `;
+    if (method === 'POST') {
+      const body: any = await req.json().catch(() => ({}));
+      const items = Array.isArray(body) ? body : [body];
+      
+      const highConsonants = new Set(['ข','ฃ','ฉ','ฐ','ถ','ผ','ฝ','ศ','ษ','ส','ห']);
+      const midConsonants = new Set(['ก','จ','ฎ','ฏ','ด','ต','บ','ป','อ']);
 
-    const result = await db.prepare(sql).bind(
-      id,
-      type,
-      character,
-      name_thai,
-      name_phonetic
-    ).run();
+      for (const item of items) {
+        const id = item.id || null;
+        const charVal = item.char || item.character || '';
+        const type = item.type || 'consonant';
+        const name_thai = item.name_thai || item.name || '';
+        const name_phonetic = item.name_phonetic || item.phonetic || '';
+        const name_myanmar = item.name_myanmar || item.meaning || '';
+        
+        let cls = item.class;
+        if (!cls) {
+          if (highConsonants.has(charVal)) cls = 'High';
+          else if (midConsonants.has(charVal)) cls = 'Mid';
+          else cls = 'Low';
+        }
 
-    return jsonResponse({ success: true, message: 'Alphabet record inserted into Cloudflare D1 successfully.', result });
+        await db.prepare(`
+          INSERT OR REPLACE INTO alphabet (id, type, character, char, name_thai, name_phonetic, name_myanmar, class, order_index)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(id, type, charVal, charVal, name_thai, name_phonetic, name_myanmar, cls, item.order_index || 0).run();
+      }
+
+      return jsonResponse({ success: true, message: 'Alphabet record(s) inserted into Cloudflare D1 successfully.' });
+    }
+
+    return jsonResponse({ message: 'Send POST request with JSON payload to insert alphabet records.' });
   } catch (err: any) {
     console.error("D1 insert alphabet failed:", err);
     return jsonResponse({

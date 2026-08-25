@@ -35,6 +35,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     const category = body.category || body.pos || 'general';
     const audio_url = body.audio_url || body.url || null;
     const pdf_drive_url = body.pdf_drive_url || null;
+    const illustration = body.illustration || body.cat_ill || null;
 
     if (!thai_text || !myanmar_text) {
       return jsonResponse({ success: false, error: 'Bad Request: Missing required fields (thai_text, myanmar_text).' }, 400);
@@ -46,7 +47,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     if (existing) {
       const sql = `
         UPDATE words_phrases
-        SET english_text = ?, myanmar_text = ?, phonetic = ?, phonetic_mm = ?, category = ?, audio_url = ?, pdf_drive_url = ?
+        SET english_text = ?, myanmar_text = ?, phonetic = ?, phonetic_mm = ?, category = ?, audio_url = ?, pdf_drive_url = ?, illustration = ?
         WHERE id = ?
       `;
       result = await db.prepare(sql).bind(
@@ -57,12 +58,13 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         category,
         audio_url,
         pdf_drive_url,
+        illustration,
         existing.id
       ).run();
     } else {
       const sql = `
-        INSERT INTO words_phrases (thai_text, english_text, myanmar_text, phonetic, phonetic_mm, category, audio_url, pdf_drive_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO words_phrases (thai_text, english_text, myanmar_text, phonetic, phonetic_mm, category, audio_url, pdf_drive_url, illustration)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       result = await db.prepare(sql).bind(
         thai_text,
@@ -72,7 +74,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         phonetic_mm,
         category,
         audio_url,
-        pdf_drive_url
+        pdf_drive_url,
+        illustration
       ).run();
     }
 

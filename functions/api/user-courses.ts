@@ -1,56 +1,26 @@
 import { getDB, jsonResponse, handleOptions } from './dbHelper';
 
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
-  const req = context.request;
-  const method = req.method;
+  if (context.request.method === 'OPTIONS') return handleOptions();
+  if (context.request.method !== 'GET') return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
 
-  if (method === 'OPTIONS') {
-    return handleOptions();
-  }
+  const userId = new URL(context.request.url).searchParams.get('userId');
+  if (!userId) return jsonResponse({ success: false, error: 'userId parameter is required' }, 400);
 
-  if (method !== 'GET') {
-    return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
-  }
+  const db = getDB(context);
+  if (!db) return jsonResponse({ success: false, error: 'D1 database binding missing' }, 500);
 
   try {
-    const url = new URL(req.url);
-    const userId = url.searchParams.get('userId') || url.searchParams.get('user_id') || url.searchParams.get('id') || '';
-
-    if (!userId) {
-      return jsonResponse({ success: false, error: 'userId parameter is required' }, 400);
-    }
-
-    const db = getDB(context);
-    if (!db) {
-      return jsonResponse({ success: false, error: 'D1 Database binding missing' }, 500);
-    }
-
-    const sql = `
-      SELECT 
-        c.*, 
-        t.created_at as purchased_at,
-        t.id as transaction_id,
-        t.status as transaction_status
-      FROM transactions t
-      JOIN courses c ON t.course_id = c.id
-      WHERE t.user_id = ? AND t.status = 'approved'
-      ORDER BY t.created_at DESC
-    `;
-
-    const { results } = await db.prepare(sql).bind(userId).all();
-    const coursesList = results || [];
-
-    return jsonResponse({
-      success: true,
-      data: coursesList,
-      userId,
-      count: coursesList.length
-    });
-  } catch (err: any) {
-    console.error('[user-courses API Error]:', err);
-    return jsonResponse({
-      success: false,
-      error: err?.message || 'Failed to fetch purchased courses'
-    }, 500);
+    const { results } = await db.prepare(`
+      SELECT c.*, uc.created_at AS purchased_at, uc.id AS enrollment_id, uc.status AS enrollment_status
+      FROM user_courses uc
+      INNER JOIN courses c ON uc.course_id = c.id
+      WHERE uc.user_id = ? AND LOWER(uc.status) IN ('approved', 'completed', 'active')
+      ORDER BY uc.created_at DESC
+    `).bind(userId).all();
+    return jsonResponse({ success: true, data: results || [], userId, count: results?.length || 0 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ success: false, error: message }, 500);
   }
 };

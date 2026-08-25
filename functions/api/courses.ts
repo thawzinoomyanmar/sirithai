@@ -15,19 +15,33 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
   try {
     if (method === 'GET') {
-      const { results } = await db.prepare('SELECT * FROM courses ORDER BY created_at ASC').all();
-      const courses = (results || []).map((row: any) => ({
+      let results: any[] = [];
+      try {
+        const res = await db.prepare('SELECT * FROM courses ORDER BY created_at ASC').all();
+        results = res.results || [];
+      } catch (err1) {
+        try {
+          const res = await db.prepare('SELECT * FROM courses').all();
+          results = res.results || [];
+        } catch (err2: any) {
+          console.error("D1 GET courses error:", err2);
+          return jsonResponse({ success: false, error: err2?.message || String(err2) }, 500);
+        }
+      }
+
+      const courses = results.map((row: any) => ({
         id: row.id,
-        name: row.name,
-        nameMm: row.name_mm || row.name,
+        name: row.name || row.title || '',
+        nameMm: row.name_mm || row.nameMm || row.name || '',
         description: row.description || '',
-        priceAmount: row.price_amount || 0,
+        priceAmount: row.price_amount ?? row.priceAmount ?? 0,
         currency: row.currency || 'MMK',
         duration: row.duration || '',
         instructor: row.instructor || '',
         resources: row.resources ? (typeof row.resources === 'string' ? JSON.parse(row.resources) : row.resources) : []
       }));
-      return jsonResponse({ success: true, data: courses });
+
+      return jsonResponse({ success: true, count: courses.length, data: courses });
     }
 
     if (method === 'POST') {
