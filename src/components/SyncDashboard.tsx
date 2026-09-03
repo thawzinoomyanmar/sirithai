@@ -121,7 +121,7 @@ export default function SyncDashboard() {
       >
         <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
         <span className="text-xs uppercase tracking-wider font-mono">
-          {isOpen ? t('sync_status') : 'Sync Engine'}
+          {t('sync.engine')}
         </span>
         {pendingTxns > 0 && (
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white animate-pulse">
@@ -141,7 +141,7 @@ export default function SyncDashboard() {
           <div className="flex items-center gap-2">
             <RefreshCw className="w-5 h-5 text-teal-400 animate-pulse" />
             <h3 className="text-sm font-semibold uppercase tracking-wider font-mono text-teal-300">
-              {t('sim_connectivity')}
+              {t('sync.connectivity')}
             </h3>
           </div>
           <button 
@@ -158,7 +158,7 @@ export default function SyncDashboard() {
           <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-gray-200">
-                {isOnline ? t('network_online') : t('network_offline')}
+                {isOnline ? t('sync.online') : t('sync.offline')}
               </span>
               <span className="text-[10px] text-gray-400 font-mono mt-0.5">
                 {isOnline ? 'Active cloud listeners' : 'IndexedDB offline fallback active'}
@@ -218,7 +218,7 @@ export default function SyncDashboard() {
               }`}
             >
               <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : t('sync_action')}
+              {syncing ? t('common.loading') : t('sync.action')}
             </button>
 
             <button
@@ -235,7 +235,7 @@ export default function SyncDashboard() {
         <div className="flex-1 flex flex-col min-h-0 bg-black/90 p-4 font-mono text-xs select-none">
           <div className="flex items-center gap-2 pb-2 mb-3 border-b border-white/10 text-gray-400 uppercase text-[10px]">
             <Terminal className="w-3.5 h-3.5 text-teal-400" />
-            <span>{t('sync_logs')}</span>
+            <span>{t('sync.logs')}</span>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2.5 pr-2 scrollbar-thin scrollbar-thumb-white/10">

@@ -1,10 +1,22 @@
+import { Capacitor } from '@capacitor/core';
+import { playAppAudio, stopAppAudio } from './appAudio';
+import { playWebAudio, stopWebAudio, type WebAudioPlayer } from './webAudioPlayer';
+
 // Centralized global audio & speech manager to prevent audio overlapping across all components
-let globalAudioInstance: HTMLAudioElement | null = null;
+let globalAudioInstance: WebAudioPlayer | null = null;
+
+const createTrackId = (url: string) => {
+  let hash = 0;
+  for (let index = 0; index < url.length; index += 1) {
+    hash = ((hash << 5) - hash + url.charCodeAt(index)) | 0;
+  }
+  return `app-audio-${Math.abs(hash)}`;
+};
 
 /**
  * Safely plays audio from a URL, pausing and resetting any previously playing audio or speech synthesis.
  */
-export const playGlobalAudio = (audioUrl: string | null | undefined): HTMLAudioElement | null => {
+export const playGlobalAudio = (audioUrl: string | null | undefined): WebAudioPlayer | null => {
   if (!audioUrl) return null;
 
   try {
@@ -15,24 +27,29 @@ export const playGlobalAudio = (audioUrl: string | null | undefined): HTMLAudioE
 
     // 2. Stop and reset currently playing HTML5 Audio element
     if (globalAudioInstance) {
-      globalAudioInstance.pause();
-      globalAudioInstance.currentTime = 0;
+      stopWebAudio();
       globalAudioInstance = null;
     }
 
-    // 3. Instantiate and play new Audio
-    const audio = new Audio(audioUrl);
+    void stopAppAudio();
+
+    // 3. Use the platform-native engine inside Capacitor Android/iOS apps.
+    if (Capacitor.isNativePlatform()) {
+      void playAppAudio(createTrackId(audioUrl), audioUrl).catch((err) => {
+        console.warn('Global native audio playback handled exception:', err);
+      });
+      return null;
+    }
+
+    // 4. Instantiate and play new Audio in the browser.
+    const audio = playWebAudio(audioUrl);
     globalAudioInstance = audio;
 
-    audio.play().catch((err) => {
-      console.warn("Global audio playback handled exception:", err);
-    });
-
-    audio.onended = () => {
+    audio.addEventListener('ended', () => {
       if (globalAudioInstance === audio) {
         globalAudioInstance = null;
       }
-    };
+    }, { once: true });
 
     return audio;
   } catch (err) {
@@ -53,10 +70,11 @@ export const speakGlobalText = (text: string | null | undefined, lang: string = 
   try {
     // 1. Stop currently playing HTML5 Audio element
     if (globalAudioInstance) {
-      globalAudioInstance.pause();
-      globalAudioInstance.currentTime = 0;
+      stopWebAudio();
       globalAudioInstance = null;
     }
+
+    void stopAppAudio();
 
     // 2. Stop Web Speech Synthesis
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -84,10 +102,10 @@ export const speakGlobalText = (text: string | null | undefined, lang: string = 
  */
 export const stopGlobalAudio = () => {
   if (globalAudioInstance) {
-    globalAudioInstance.pause();
-    globalAudioInstance.currentTime = 0;
+    stopWebAudio();
     globalAudioInstance = null;
   }
+  void stopAppAudio();
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     window.speechSynthesis.cancel();
   }

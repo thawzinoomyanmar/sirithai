@@ -25,6 +25,13 @@ export default function SentenceView({
   const [currentPage, setCurrentPage] = useState(1);
   const sentencesPerPage = 4;
 
+  // Reset page, selected word, and active audio when sentences or active lesson change
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedWord(null);
+    setActiveSpeechLine(null);
+  }, [sentences]);
+
   // Reset page when search query changes
   useEffect(() => {
     setCurrentPage(1);

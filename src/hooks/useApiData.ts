@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { Lesson, Course, GrammarChapter } from '../types';
+import { Lesson, Course, GrammarChapter, VocabCategory, VocabItem } from '../types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -63,10 +63,10 @@ export async function fetchLessonDetail(lessonId: string | number): Promise<Less
       const fallbackUrl = `${API_BASE}/api/lessons?id=${encodeURIComponent(cleanId)}`;
       const res2 = await fetch(fallbackUrl);
       if (!res2.ok) return null;
-      const data2 = await res2.json();
+      const data2: any = await res2.json();
       return data2.data || data2.lesson || null;
     }
-    const rawData = await res.json();
+    const rawData: any = await res.json();
     return rawData.data || rawData.lesson || null;
   } catch (err) {
     console.error(`Error fetching lesson detail #${lessonId}:`, err);

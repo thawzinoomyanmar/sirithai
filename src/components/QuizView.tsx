@@ -32,6 +32,14 @@ export default function QuizView({
   const [correctCount, setCorrectCount] = useState<number>(0);
   const [showResults, setShowResults] = useState<boolean>(false);
 
+  React.useEffect(() => {
+    setCurrentIdx(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setCorrectCount(0);
+    setShowResults(false);
+  }, [lessonId, questions]);
+
   const questionsList = questions || [];
   const activeQuestion = questionsList[currentIdx];
 

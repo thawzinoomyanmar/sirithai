@@ -342,8 +342,6 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
   registeredUsers,
   setRegisteredUsers,
 }) => {
-  if (!isGatewayOpen || !gatewayCourse) return null;
-
   // Local state for auto signup / login password in enrollment
   const [gatewayPassword, setGatewayPassword] = useState<string>('');
 
@@ -354,6 +352,9 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
   const [copiedType, setCopiedType] = useState<'number' | 'name' | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!isGatewayOpen || !gatewayCourse) return null;
+
   const activeBank = BANK_ACCOUNTS[gatewayPaymentMethod] || BANK_ACCOUNTS.kbzpay;
 
   // Check if there is a previous cancelled order for this item by this user
@@ -468,12 +469,12 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
         className="bg-white rounded-2xl max-w-lg md:max-w-xl w-full text-slate-800 shadow-xl border border-slate-100 flex flex-col max-h-[92vh] overflow-hidden"
       >
         {/* Compact Elegant Header */}
-        <div className="px-5 py-4 bg-brand-purple text-white flex items-center justify-between shrink-0">
+        <div className="px-6 py-5 bg-brand-purple text-white flex items-center justify-between shrink-0">
           <div>
-            <h3 className="text-sm font-sans font-black uppercase tracking-wider">
-              Enrollment Portal • သင်တန်းဝင်ခွင့်
+            <h3 className="text-base sm:text-lg font-sans font-black uppercase tracking-wider">
+              ENROLLMENT PORTAL • သင်တန်းဝင်ခွင့်
             </h3>
-            <p className="text-[10px] text-purple-200 font-bold mt-0.5">
+            <p className="text-xs text-purple-200 font-bold mt-0.5">
               Step {gatewayStep}/4 • {
                 gatewayStep === 1 ? "Student details" : 
                 gatewayStep === 2 ? "Select bank payment method" :
@@ -486,15 +487,15 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
             onClick={() => setIsGatewayOpen(false)}
             className="p-1 hover:bg-white/10 transition-colors text-purple-200 hover:text-white rounded-lg cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Rich Spacious Step Progress Flow with Icons */}
-        <div className="bg-slate-50/70 border-b border-slate-100 py-2.5 px-4 sm:px-10 shrink-0 select-none relative">
-          <div className="max-w-md mx-auto relative flex items-center justify-between">
+        <div className="bg-slate-50/70 border-b border-slate-150 py-4 px-6 sm:px-12 shrink-0 select-none relative">
+          <div className="max-w-lg mx-auto relative flex items-center justify-between">
             {/* Background connecting line */}
-            <div className="absolute left-6 right-6 top-[15px] h-0.5 bg-slate-200 rounded-full z-0">
+            <div className="absolute left-8 right-8 top-[20px] h-0.5 bg-slate-200 rounded-full z-0">
               <div 
                 className="h-full bg-brand-purple rounded-full transition-all duration-300"
                 style={{ 
@@ -505,37 +506,37 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
 
             {/* Step icons & descriptions */}
             {[
-              { step: 1, label: 'Profile', mmLabel: 'ကျောင်းသား', icon: <UserCheck className="w-3.5 h-3.5" /> },
-              { step: 2, label: 'Payment', mmLabel: 'ဘဏ်ရွေးရန်', icon: <CreditCard className="w-3.5 h-3.5" /> },
-              { step: 3, label: 'Receipt QR', mmLabel: 'ငွေလွှဲပြေစာ', icon: <QrCode className="w-3.5 h-3.5" /> },
-              { step: 4, label: 'Enrolled', mmLabel: 'ကျောင်းအပ်ပြီး', icon: <CheckCircle className="w-3.5 h-3.5" /> }
+              { step: 1, label: 'Profile', mmLabel: 'ကျောင်းသား', icon: <UserCheck className="w-5 h-5" /> },
+              { step: 2, label: 'Payment', mmLabel: 'ဘဏ်ရွေးရန်', icon: <CreditCard className="w-5 h-5" /> },
+              { step: 3, label: 'Receipt QR', mmLabel: 'ငွေလွှဲပြေစာ', icon: <QrCode className="w-5 h-5" /> },
+              { step: 4, label: 'Enrolled', mmLabel: 'ကျောင်းအပ်ပြီး', icon: <CheckCircle className="w-5 h-5" /> }
             ].map((item) => {
               const isActive = gatewayStep === item.step;
               const isPassed = gatewayStep > item.step;
               
               return (
-                <div key={item.step} className="flex flex-col items-center relative z-10 w-16">
+                <div key={item.step} className="flex flex-col items-center relative z-10 w-20 text-center">
                   <div 
-                    className={`w-7.5 h-7.5 rounded-full flex items-center justify-center transition-all duration-300 border-2 ${
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 border-2 ${
                       isActive 
-                        ? (item.step === 4 ? 'bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/30 scale-110 ring-4 ring-emerald-500/20' : 'bg-brand-purple text-white border-brand-purple shadow-sm shadow-brand-purple/20 scale-105') 
+                        ? 'bg-brand-purple text-white border-brand-purple shadow-md shadow-brand-purple/20 scale-105 ring-4 ring-purple-500/15' 
                         : isPassed 
                           ? 'bg-emerald-500 text-white border-emerald-500 shadow-xs' 
-                          : 'bg-white text-slate-400 border-slate-200'
+                          : 'bg-white text-slate-300 border-slate-200'
                     }`}
                   >
                     {item.icon}
                   </div>
                   <span 
-                    className={`text-[8.5px] font-sans font-black mt-1.5 leading-tight text-center transition-colors ${
-                      isActive ? (item.step === 4 ? 'text-emerald-600 font-extrabold' : 'text-brand-purple') : isPassed ? 'text-emerald-600' : 'text-slate-400'
+                    className={`text-[10px] sm:text-xs font-sans font-black mt-1.5 leading-tight transition-colors ${
+                      isActive ? 'text-brand-purple font-extrabold' : isPassed ? 'text-emerald-600' : 'text-slate-400'
                     }`}
                   >
                     {item.label}
                   </span>
                   <span 
-                    className={`text-[7px] font-sans mt-0.5 leading-none text-center transition-colors ${
-                      isActive ? (item.step === 4 ? 'text-emerald-600 font-extrabold' : 'text-brand-purple/80 font-bold') : isPassed ? 'text-emerald-500/80 font-bold' : 'text-slate-400/70'
+                    className={`text-[9px] font-sans mt-0.5 leading-none transition-colors ${
+                      isActive ? 'text-brand-purple/80 font-bold' : isPassed ? 'text-emerald-500/80 font-bold' : 'text-slate-400/70'
                     }`}
                   >
                     {item.mmLabel}
@@ -546,66 +547,66 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
           </div>
         </div>
 
-        {/* Course Summary Bar (Compact) */}
-        <div className="bg-brand-purple/5 px-5 py-2 border-b border-slate-100/80 flex justify-between items-center shrink-0">
+        {/* Course Summary Bar */}
+        <div className="bg-purple-50/60 px-6 py-3 border-b border-purple-100/60 flex justify-between items-center shrink-0">
           <div className="space-y-0.5">
-            <span className="text-[7.5px] font-mono font-black uppercase text-brand-purple tracking-widest block">
-              {gatewayCourse?.itemType === 'e-book' ? 'eBook / Study Resource' : 'Course'}
+            <span className="text-[9px] font-sans font-extrabold uppercase text-brand-purple tracking-widest block">
+              {gatewayCourse?.itemType === 'e-book' ? 'EBOOK / STUDY RESOURCE' : 'COURSE / STUDY PROGRAM'}
             </span>
-            <span className="text-xs font-sans font-bold text-slate-800 block truncate max-w-[280px]">{gatewayCourse.name}</span>
+            <span className="text-sm font-sans font-black text-slate-900 block truncate max-w-[320px]">{gatewayCourse.name}</span>
           </div>
-          <div className="text-right shrink-0 bg-white border border-slate-100 px-2 py-0.5 rounded-lg">
-            <span className="text-[7.5px] font-mono text-slate-400 block uppercase leading-none mb-0.5">
-              {gatewayCourse?.itemType === 'e-book' ? 'Price' : 'Fee'}
+          <div className="text-right shrink-0 bg-white border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs">
+            <span className="text-[9px] font-sans font-bold text-gray-400 block uppercase leading-none mb-1">
+              PRICE
             </span>
-            <span className="text-xs font-mono font-bold text-brand-purple">
+            <span className="text-sm sm:text-base font-sans font-black text-brand-purple">
               {gatewayCourse.priceAmount.toLocaleString()} MMK
             </span>
           </div>
         </div>
 
         {/* CONTENT DYNAMIC PORT */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-3 text-xs flex-1">
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs flex-1">
           
           {/* STEP 1: ENROLLMENT FORM */}
           {gatewayStep === 1 && (
-            <div className="space-y-3 animate-fade-in max-w-sm mx-auto">
+            <div className="space-y-4 animate-fade-in max-w-md mx-auto">
               {previousCancelledOrder && (
-                <div className="bg-rose-50 border-2 border-rose-200/80 p-3.5 rounded-xl text-left space-y-2">
+                <div className="bg-rose-50 border-2 border-rose-200/80 p-4 rounded-2xl text-left space-y-2">
                   <div className="flex items-center gap-2 text-rose-700">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
                     <span className="text-[10px] font-sans font-black uppercase tracking-wider">
                       Previous Order Declined (ငြင်းပယ်ထားပါသည်)
                     </span>
                   </div>
-                  <p className="text-[10.5px] text-rose-800 font-sans font-bold leading-normal">
+                  <p className="text-xs text-rose-800 font-sans font-bold leading-normal">
                     Your previous payment transfer receipt verification was rejected by administrative reviews. Please complete your student info, select bank, and re-upload the correct transaction slip correctly!
                   </p>
                   {previousCancelledOrder.adminNotes && (
-                    <div className="bg-white/90 border border-rose-150 p-2.5 rounded-lg text-[10px] text-rose-950 font-sans font-bold leading-normal">
+                    <div className="bg-white/90 border border-rose-150 p-2.5 rounded-xl text-xs text-rose-950 font-sans font-bold leading-normal">
                       <span className="text-[9px] text-rose-600 block uppercase font-sans font-black mb-0.5">Admin Rejection memo:</span>
                       "{previousCancelledOrder.adminNotes}"
                     </div>
                   )}
                 </div>
               )}
-              <div className="space-y-2.5">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                    Student Full Name ({checkoutName ? "Verified" : "ကျောင်းသားအမည်"})
+              <div className="space-y-3.5">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-sans font-black text-slate-700">
+                    Student Full Name (ကျောင်းသားအမည်)
                   </label>
                   <input
                     type="text"
                     required
                     value={checkoutName}
                     onChange={(e) => setCheckoutName(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-205 focus:border-brand-purple/60 focus:bg-white rounded-lg text-xs font-semibold text-slate-900 focus:outline-none transition-all placeholder:text-slate-300"
+                    className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 focus:border-brand-purple focus:bg-white rounded-2xl text-sm font-bold text-slate-900 focus:outline-none transition-all placeholder:text-slate-300"
                     placeholder="e.g. Min Thura"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-sans font-black text-slate-700">
                     Mobile Phone (ဖုန်းနံပါတ်)
                   </label>
                   <input
@@ -613,29 +614,29 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                     required
                     value={gatewayPhone}
                     onChange={(e) => setGatewayPhone(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-205 focus:border-brand-purple/60 focus:bg-white rounded-lg text-xs font-mono font-600 text-slate-900 focus:outline-none transition-all placeholder:text-slate-300"
-                    placeholder="e.g. 09791112233"
+                    className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 focus:border-brand-purple focus:bg-white rounded-2xl text-sm font-mono font-bold text-slate-900 focus:outline-none transition-all placeholder:text-slate-300"
+                    placeholder="09-"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-sans font-black text-slate-700">
                     Email Address (အီးမေးလ်)
                   </label>
                   <input
                     type="email"
                     value={gatewayEmail}
                     onChange={(e) => setGatewayEmail(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-205 focus:border-brand-purple/60 focus:bg-white rounded-lg text-xs font-medium text-slate-900 focus:outline-none transition-all placeholder:text-slate-300"
-                    placeholder="student@example.com"
+                    className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 focus:border-brand-purple focus:bg-white rounded-2xl text-sm font-bold text-slate-900 focus:outline-none transition-all placeholder:text-slate-300"
+                    placeholder="student@classroom.edu"
                   />
                 </div>
 
                 {!currentUser && (() => {
                   const isExisting = registeredUsers.some(u => u.username.toLowerCase() === checkoutName.trim().toLowerCase());
                   return (
-                    <div className="animate-fade-in">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                    <div className="space-y-1.5 animate-fade-in">
+                      <label className="block text-xs font-sans font-black text-slate-700">
                         {isExisting ? (
                           <span className="text-amber-600 font-extrabold flex items-center gap-1">
                             ⚠️ Student Account Found! Enter Password to Login (အကောင့်ရှိပြီးသားဖြစ်၍ စကားဝှက်ထည့်ပါ)
@@ -651,14 +652,14 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                         required
                         value={gatewayPassword}
                         onChange={(e) => setGatewayPassword(e.target.value)}
-                        className={`w-full px-3 py-1.5 border focus:bg-white rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none transition-all placeholder:text-slate-300 ${
+                        className={`w-full px-4 py-3 border-2 focus:bg-white rounded-2xl text-sm font-mono font-bold text-slate-900 focus:outline-none transition-all placeholder:text-slate-300 ${
                           isExisting 
-                            ? 'bg-amber-50/70 border-amber-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10' 
-                            : 'bg-slate-50 border-slate-205 focus:border-brand-purple/60'
+                            ? 'bg-amber-50/70 border-amber-300 focus:border-amber-500' 
+                            : 'bg-gray-50/80 border-gray-200 focus:border-brand-purple'
                         }`}
                         placeholder={isExisting ? "Type password to link account..." : "Password (min 4 chars)..."}
                       />
-                      <p className="text-[9px] text-slate-400 mt-0.5 font-sans leading-normal">
+                      <p className="text-[11px] text-slate-400 font-sans font-medium mt-1 leading-normal">
                         {isExisting 
                           ? "This student profile is already registered. Logging in will link this course purchase to your progress!" 
                           : "This password will let you easily log back in anytime to access approved lessons."}
@@ -668,13 +669,13 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                 })()}
               </div>
 
-              <div className="pt-1">
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     const cleanName = checkoutName.trim();
                     if (!cleanName || !gatewayPhone.trim()) {
-                      alert("Please provide dry contact information (Name and Phone) first.");
+                      alert("Please provide contact information (Name and Phone) first.");
                       return;
                     }
                     if (!currentUser) {
@@ -698,10 +699,10 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                     }
                     setGatewayStep(2);
                   }}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm font-sans cursor-pointer"
+                  className="w-full bg-[#0c1222] hover:bg-[#162038] text-white font-sans font-black text-sm py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer select-none"
                 >
                   <span>Select Payment Channel</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1022,6 +1023,7 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                     const isEbook = gatewayCourse?.itemType === 'e-book';
                     const newOrder: PurchaseOrder = {
                       id,
+                      courseId: gatewayCourse.id,
                       username: buyerUsername,
                       itemName: isEbook ? `📕 [eBook] ${gatewayCourse.name}` : `🎓 [Course] ${gatewayCourse.name}`,
                       itemType: isEbook ? 'e-book' : 'course',
@@ -1070,10 +1072,15 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                             body: JSON.stringify({
                               id,
                               user_id: realName,
+                              course_id: gatewayCourse.id,
+                              item_name: newOrder.itemName,
+                              item_type: newOrder.itemType,
                               amount: gatewayCourse.priceAmount,
                               payment_method: gatewayPaymentMethod,
                               status: 'pending',
-                              transaction_proof_url: finalProofUrl
+                              transaction_proof_url: finalProofUrl,
+                              student_phone: gatewayPhone,
+                              student_email: gatewayEmail
                             })
                           });
 
@@ -1107,6 +1114,9 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                         await localDB.transactions.put({
                           id,
                           user_id: realName,
+                          course_id: gatewayCourse.id,
+                          item_name: newOrder.itemName,
+                          item_type: newOrder.itemType,
                           amount: gatewayCourse.priceAmount,
                           status: 'pending',
                           transaction_proof_url: finalProofUrl,

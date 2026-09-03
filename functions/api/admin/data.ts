@@ -213,17 +213,23 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       }
 
       if (type === 'alphabet') {
-        const letter = record.letter || '';
-        const phonetic = record.phonetic || '';
+        const letter = record.char || record.character || record.letter || '';
+        const phonetic = record.name_phonetic || record.phonetic || '';
         const phonetic_mm = record.phonetic_mm || record.phoneticMm || '';
-        const meaning = record.meaning || '';
-        const category = record.category || 'High Class Consonants';
+        const meaning = record.name_myanmar || record.meaning || '';
         const audio_url = record.audio_url || record.audioUrl || '';
+        const image_url = record.image_url || record.imageUrl || '';
 
         const res = await db.prepare(`
-          INSERT INTO alphabet (letter, phonetic, phonetic_mm, meaning, category, audio_url)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(letter, phonetic, phonetic_mm, meaning, category, audio_url).run();
+          INSERT INTO alphabet (
+            character, char, name_thai, name_phonetic, phonetic_mm, name_myanmar,
+            type, class, order_index, audio_url, image_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          letter, letter, record.name_thai || letter, phonetic, phonetic_mm, meaning,
+          record.type || 'consonant', record.class || 'Mid', record.order_index || 0,
+          audio_url, image_url
+        ).run();
 
         return jsonResponse({ success: true, message: 'Alphabet item created into D1 successfully', id: res.meta?.lastRowId, type: 'alphabet' });
       }

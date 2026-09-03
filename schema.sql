@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS lessons (
     course_id TEXT,
     title_thai TEXT NOT NULL,
     title_phonetic TEXT,
+    title_myanmar_phonetic TEXT,
     title_english TEXT,
     title_myanmar TEXT,
     description TEXT,
@@ -205,6 +206,7 @@ CREATE TABLE IF NOT EXISTS dialogue (
     id TEXT PRIMARY KEY,
     course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     lesson_id TEXT,
+    chapter_number INTEGER DEFAULT 1,
     speaker TEXT,
     text_thai TEXT NOT NULL,
     text_phonetic TEXT,
@@ -220,6 +222,7 @@ CREATE TABLE IF NOT EXISTS conversation (
     id TEXT PRIMARY KEY,
     course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     lesson_id TEXT,
+    chapter_number INTEGER DEFAULT 1,
     speaker TEXT,
     text_thai TEXT NOT NULL,
     text_phonetic TEXT,
@@ -231,3 +234,137 @@ CREATE TABLE IF NOT EXISTS conversation (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS store_items (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_mm TEXT,
+    type TEXT NOT NULL DEFAULT 'e-book',
+    description TEXT,
+    description_mm TEXT,
+    price REAL NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'MMK',
+    popular INTEGER NOT NULL DEFAULT 0,
+    course_id TEXT REFERENCES courses(id) ON DELETE SET NULL,
+    pdf_file_name TEXT,
+    pdf_download_url TEXT,
+    google_drive_link TEXT,
+    content_json TEXT NOT NULL DEFAULT '{}',
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audio_ebooks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    title_mm TEXT,
+    description TEXT,
+    description_mm TEXT,
+    cover_url TEXT,
+    price_amount REAL NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'MMK',
+    is_free INTEGER NOT NULL DEFAULT 0,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audio_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ebook_id TEXT NOT NULL REFERENCES audio_ebooks(id) ON DELETE CASCADE,
+    track_number INTEGER NOT NULL DEFAULT 1,
+    title TEXT NOT NULL,
+    title_mm TEXT,
+    audio_url TEXT NOT NULL,
+    duration_seconds INTEGER NOT NULL DEFAULT 0,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ebook_chapters (
+    id TEXT PRIMARY KEY,
+    ebook_id TEXT NOT NULL REFERENCES audio_ebooks(id) ON DELETE CASCADE,
+    chapter_number INTEGER NOT NULL CHECK (chapter_number > 0),
+    title_thai TEXT NOT NULL,
+    title_myanmar TEXT,
+    title_english TEXT,
+    subtitle TEXT,
+    page_number INTEGER,
+    is_published INTEGER NOT NULL DEFAULT 1 CHECK (is_published IN (0, 1)),
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ebook_id, chapter_number)
+);
+
+CREATE TABLE IF NOT EXISTS ebook_chapter_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_id TEXT NOT NULL REFERENCES ebook_chapters(id) ON DELETE CASCADE,
+    section_type TEXT NOT NULL CHECK (section_type IN ('vocabulary', 'verb', 'qa', 'conversation')),
+    label TEXT NOT NULL,
+    title_myanmar TEXT,
+    title_english TEXT,
+    search_placeholder TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (chapter_id, section_type)
+);
+
+CREATE TABLE IF NOT EXISTS ebook_chapter_vocabulary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_id TEXT NOT NULL REFERENCES ebook_chapters(id) ON DELETE CASCADE,
+    thai TEXT NOT NULL,
+    phonetic TEXT,
+    myanmar TEXT NOT NULL,
+    english TEXT,
+    audio_url TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ebook_chapter_verbs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_id TEXT NOT NULL REFERENCES ebook_chapters(id) ON DELETE CASCADE,
+    prefix_thai TEXT NOT NULL DEFAULT 'จะ',
+    prefix_phonetic TEXT,
+    prefix_myanmar TEXT,
+    verb_thai TEXT NOT NULL,
+    verb_phonetic TEXT,
+    verb_myanmar TEXT NOT NULL,
+    combined_thai TEXT NOT NULL,
+    combined_phonetic TEXT,
+    combined_myanmar TEXT NOT NULL,
+    audio_url TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ebook_chapter_qa (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_id TEXT NOT NULL REFERENCES ebook_chapters(id) ON DELETE CASCADE,
+    question_thai TEXT NOT NULL,
+    question_phonetic TEXT,
+    question_myanmar TEXT NOT NULL,
+    question_audio_url TEXT,
+    answer_thai TEXT NOT NULL,
+    answer_phonetic TEXT,
+    answer_myanmar TEXT NOT NULL,
+    answer_audio_url TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ebook_chapter_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_id TEXT NOT NULL REFERENCES ebook_chapters(id) ON DELETE CASCADE,
+    thai TEXT NOT NULL,
+    phonetic TEXT,
+    myanmar TEXT NOT NULL,
+    english TEXT,
+    speaker TEXT,
+    audio_url TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_ebook_chapters_ebook_order ON ebook_chapters(ebook_id, is_published, order_index, chapter_number);
+CREATE INDEX IF NOT EXISTS idx_ebook_sections_chapter_order ON ebook_chapter_sections(chapter_id, order_index);
+CREATE INDEX IF NOT EXISTS idx_ebook_vocab_chapter_order ON ebook_chapter_vocabulary(chapter_id, order_index, id);
+CREATE INDEX IF NOT EXISTS idx_ebook_verbs_chapter_order ON ebook_chapter_verbs(chapter_id, order_index, id);
+CREATE INDEX IF NOT EXISTS idx_ebook_qa_chapter_order ON ebook_chapter_qa(chapter_id, order_index, id);
+CREATE INDEX IF NOT EXISTS idx_ebook_conversation_chapter_order ON ebook_chapter_conversations(chapter_id, order_index, id);

@@ -6,6 +6,7 @@ import { useVocabCategories, useVocabItems } from '../hooks/useApiData';
 import { localDB } from '../utils/db';
 import { VocabCard } from './VocabCard';
 import { playGlobalAudio, speakGlobalText } from '../utils/audioManager';
+import { useLanguage } from '../utils/LanguageContext';
 
 const renderCategoryIcon = (icon?: string, sizeClass: string = "w-4 h-4") => {
   if (!icon) return <BookOpen className={`${sizeClass} shrink-0`} />;
@@ -24,6 +25,7 @@ interface VocabPageProps {
 }
 
 export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
+  const { language, t } = useLanguage();
   const { categories: apiCategories, isLoading } = useVocabCategories();
 
   const [categories, setCategories] = useState<VocabCategory[]>([]);
@@ -64,9 +66,16 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
   const currentCategory = categories.find(c => c.id === selectedCategoryId || c.name === selectedCategoryId) || categories[0] || { id: '', name: '', icon: '', items: [] };
 
   const rawItems = categoryItems.length > 0 ? categoryItems : (currentCategory.items || []);
+  const seenVocab = new Set<string>();
+  const uniqueItems = (rawItems || []).filter(item => {
+    const key = (item.thai || item.english || String(item.id || '')).trim().toLowerCase();
+    if (!key || seenVocab.has(key)) return false;
+    seenVocab.add(key);
+    return true;
+  });
 
   // Search across items
-  const filteredItems = (rawItems || []).filter(item => {
+  const filteredItems = uniqueItems.filter(item => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -114,7 +123,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
       <div className="bg-white rounded-3xl w-full min-h-[70vh] flex items-center justify-center border-2 border-slate-100">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-brand-purple/20 border-t-brand-purple rounded-full animate-spin"></div>
-          <p className="text-sm font-sans font-bold text-brand-muted">Loading Vocabulary...</p>
+          <p className="text-sm font-sans font-bold text-brand-muted">{t('vocabulary.loading')}</p>
         </div>
       </div>
     );
@@ -125,9 +134,9 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
       <div className="bg-white rounded-3xl w-full min-h-[70vh] flex items-center justify-center border-2 border-slate-100">
         <div className="text-center p-6">
           <div className="text-4xl mb-2">📭</div>
-          <h3 className="font-sans font-black text-brand-dark mb-2">No data available</h3>
-          <p className="text-xs text-brand-muted font-bold max-w-sm">Please ensure you are connected to the internet and the API is accessible.</p>
-          <button onClick={onClose} className="mt-4 px-6 py-2 bg-brand-purple text-white rounded-xl text-xs font-bold">Back</button>
+          <h3 className="font-sans font-black text-brand-dark mb-2">{t('common.no_data')}</h3>
+          <p className="text-xs text-brand-muted font-bold max-w-sm">{t('vocabulary.empty_help')}</p>
+          <button onClick={onClose} className="mt-4 px-6 py-2 bg-brand-purple text-white rounded-xl text-xs font-bold">{t('common.back')}</button>
         </div>
       </div>
     );
@@ -146,10 +155,10 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
           <button
             onClick={onClose}
             className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-brand-purple/5 text-slate-700 hover:text-brand-purple border-2 border-slate-200 hover:border-brand-purple/30 rounded-2xl transition-all duration-200 cursor-pointer font-sans font-black text-xs sm:text-sm uppercase tracking-wider shadow-3xs hover:shadow-2xs active:scale-95 shrink-0"
-            title="Back to Course pathways"
+            title={t('common.back')}
           >
             <ArrowLeft className="w-4 h-4 text-brand-purple stroke-[3]" />
-            <span>Back</span>
+            <span>{t('common.back')}</span>
           </button>
           
           <div className="text-left min-w-0 flex-1">
@@ -157,10 +166,10 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
               <span className="p-1.5 bg-brand-purple/10 rounded-xl inline-flex text-black shrink-0">
                 <Book className="w-5 h-5 mr-3 text-black stroke-2" strokeWidth={2} />
               </span>
-              <span className="truncate">Classroom Vocabulary Book</span>
+              <span className="truncate">{t('vocabulary.heading')}</span>
             </h3>
             <p className="text-[10px] sm:text-xs text-slate-500 font-bold font-sans mt-0.5 ml-0.5 truncate">
-              ဝေါဟာရစကားလုံးပေါင်းစုံ လေ့လာခန်း • <span className="text-brand-purple">{categories.length} Categories</span>
+              {t('vocabulary.subtitle')} • <span className="text-brand-purple">{t('common.categories', { count: categories.length })}</span>
             </p>
           </div>
         </div>
@@ -174,7 +183,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search words by Thai, English, Myanmar, spelling..."
+            placeholder={t('vocabulary.search_placeholder')}
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-sans text-xs sm:text-sm font-semibold focus:outline-none focus:border-brand-purple focus:bg-white transition-all text-brand-dark"
           />
           {searchQuery && (
@@ -182,7 +191,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
               onClick={() => setSearchQuery('')}
               className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-brand-purple hover:text-brand-dark"
             >
-              CLEAR
+              {t('common.clear')}
             </button>
           )}
         </div>
@@ -209,7 +218,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
                   }`}
                 >
                   {renderCategoryIcon(cat.icon, "w-4 h-4")}
-                  <span>{cat.name}</span>
+                  <span>{language === 'my' ? ((cat as any).nameMm || (cat as any).name_mm || cat.name) : cat.name}</span>
                 </button>
               );
             })}
@@ -234,7 +243,7 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
                 }`}
               >
                 {renderCategoryIcon(cat.icon, "w-4 h-4")}
-                <span>{cat.name}</span>
+                <span>{language === 'my' ? ((cat as any).nameMm || (cat as any).name_mm || cat.name) : cat.name}</span>
               </button>
             );
           })}
@@ -273,9 +282,9 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
           ) : (
             <div className="text-center py-12">
               <div className="text-4xl mb-2">🔍</div>
-              <h4 className="font-sans font-black text-slate-700">No results found</h4>
+              <h4 className="font-sans font-black text-slate-700">{t('vocabulary.no_results')}</h4>
               <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto font-bold">
-                Try searching with simpler terms or browse some other vocabulary categories in the sidebar.
+                {t('vocabulary.search_help')}
               </p>
             </div>
           )}
@@ -285,10 +294,10 @@ export const VocabPage: React.FC<VocabPageProps> = ({ onClose }) => {
       {/* Footer Status Bar overlay */}
       <div className="px-4 py-3 sm:px-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 shrink-0 text-[10px] font-sans font-bold text-slate-400 select-none">
         <span className="flex items-center gap-1.5">
-          💡 <span className="text-indigo-500">UX Hint:</span> Double-click any Thai text inside cards to highlight and copy!
+          💡 {t('vocabulary.copy_hint')}
         </span>
         <span className="text-brand-purple font-extrabold uppercase bg-brand-purple/5 px-2 py-0.5 rounded">
-          Classroom Vocabulary is fully offline-ready
+          {t('vocabulary.offline_ready')}
         </span>
       </div>
     </motion.div>

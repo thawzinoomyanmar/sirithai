@@ -6,10 +6,12 @@ import App from './App';
 import './index.css';
 import { LanguageProvider } from './utils/LanguageContext';
 import { SplashScreen } from './components/SplashScreen';
+import { useAudioUnlocker } from './hooks/useAudioUnlocker';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const DEFAULT_CLERK_KEY = "pk_test_ZGVzaXJlZC1iaXNvbi0zMi5jbGVyay5hY2NvdW50cy5kZXYk";
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || DEFAULT_CLERK_KEY;
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isLoaded } = useAuth();
@@ -24,6 +26,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       if (str.includes('failed_to_load_clerk_js') || str.includes('clerk.browser.js') || str.includes('failed to load script')) {
         console.warn("⚠️ [Clerk Auth] Clerk script load failed (ERR_NAME_NOT_RESOLVED / Network error). Enabling fallback mode.");
         setHasTimedOut(true);
+        setForceContinue(true);
       }
     };
 
@@ -32,6 +35,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       if (msg.includes('clerk.browser.js') || msg.includes('Clerk')) {
         console.warn("⚠️ [Clerk Auth] Clerk runtime error detected. Enabling fallback mode.");
         setHasTimedOut(true);
+        setForceContinue(true);
       }
     };
 
@@ -39,16 +43,24 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     window.addEventListener('error', handleError);
 
     let timeoutId: ReturnType<typeof setTimeout>;
+    let autoContinueId: ReturnType<typeof setTimeout>;
+
     if (!isLoaded) {
       timeoutId = setTimeout(() => {
         setHasTimedOut(true);
-      }, 2500);
+      }, 2000);
+
+      // Auto-continue into app after 3.5 seconds so users are never stuck on splash
+      autoContinueId = setTimeout(() => {
+        setForceContinue(true);
+      }, 3500);
     }
 
     return () => {
       window.removeEventListener('unhandledrejection', handleRejection);
       window.removeEventListener('error', handleError);
       if (timeoutId) clearTimeout(timeoutId);
+      if (autoContinueId) clearTimeout(autoContinueId);
     };
   }, [isLoaded]);
   
@@ -66,14 +78,18 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AudioUnlockBoundary({ children }: { children: React.ReactNode }) {
+  useAudioUnlocker();
+  return <>{children}</>;
+}
+
 const root = createRoot(document.getElementById('root')!);
 
-if (PUBLISHABLE_KEY && PUBLISHABLE_KEY.trim() !== '') {
-  console.log("✅ [Clerk Auth] Publishable Key loaded.");
-  root.render(
-    <StrictMode>
-      <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
-        <BrowserRouter>
+root.render(
+  <StrictMode>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+      <BrowserRouter>
+        <AudioUnlockBoundary>
           <AuthWrapper>
             <LanguageProvider>
               <ErrorBoundary>
@@ -81,17 +97,8 @@ if (PUBLISHABLE_KEY && PUBLISHABLE_KEY.trim() !== '') {
               </ErrorBoundary>
             </LanguageProvider>
           </AuthWrapper>
-        </BrowserRouter>
-      </ClerkProvider>
-    </StrictMode>
-  );
-} else {
-  console.warn("⚠️ [Clerk Auth] Missing or empty VITE_CLERK_PUBLISHABLE_KEY.");
-  root.render(
-    <div style={{ padding: '2rem', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <h1 style={{ color: '#e53e3e' }}>Authentication Error</h1>
-      <p>The application is missing the Clerk Publishable Key.</p>
-      <p>Please check your <code>.env</code> file and ensure <code>VITE_CLERK_PUBLISHABLE_KEY</code> is set.</p>
-    </div>
-  );
-}
+        </AudioUnlockBoundary>
+      </BrowserRouter>
+    </ClerkProvider>
+  </StrictMode>
+);

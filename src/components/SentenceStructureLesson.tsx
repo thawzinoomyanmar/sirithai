@@ -131,7 +131,7 @@ export default function SentenceStructureLesson({ onBack }: SentenceStructureLes
       {/* Outer Smartphone Mockup Shell Container */}
       <div 
         id="phone-mockup-frame" 
-        className="w-full max-w-[430px] bg-white rounded-[50px] border-[10px] border-slate-900 shadow-2xl overflow-hidden flex flex-col relative aspect-[9/19.5]"
+        className="w-full max-w-[430px] bg-white rounded-[32px] sm:rounded-[50px] border-4 sm:border-[10px] border-slate-900 shadow-2xl overflow-hidden flex flex-col relative min-h-[620px] sm:aspect-[9/19.5]"
       >
         {/* Phone Notch/Speaker Header Accent */}
         <div className="absolute top-0 inset-x-0 h-7 bg-slate-900 flex justify-center items-end pb-1.5 z-50">

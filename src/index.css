@@ -167,4 +167,32 @@ html, body, input, textarea, select, button, label, p, span, div, h1, h2, h3, h4
   animation: bounceSubtle 3s ease-in-out infinite;
 }
 
+/* Scrollbar hiding utilities for mobile touch sliders */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
+/* Touch scrolling optimizations */
+.touch-pan-x {
+  touch-action: pan-x;
+}
+.touch-pan-y {
+  touch-action: pan-y;
+}
+
+/* Fixed mobile navigation reserves a full 64px tap area above the device inset. */
+.mobile-bottom-nav {
+  height: calc(4rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 640px) {
+  .mobile-bottom-nav {
+    height: 4rem;
+    padding-bottom: 0;
+  }
+}

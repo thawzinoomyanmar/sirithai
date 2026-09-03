@@ -133,6 +133,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           l.course_id,
           l.title_thai,
           l.title_phonetic,
+          l.title_myanmar_phonetic,
           l.title_english,
           l.title_myanmar,
           l.description_english,
@@ -164,7 +165,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         results = res.results || [];
       } catch (err1) {
         try {
-          const res = await db.prepare('SELECT id, course_id, title_thai, title_phonetic, title_english, title_myanmar, created_at FROM lessons').all();
+          const res = await db.prepare('SELECT id, course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, created_at FROM lessons').all();
           results = res.results || [];
         } catch (err2: any) {
           console.error("D1 GET lessons error:", err2);
@@ -186,6 +187,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           courseId: row.course_id || 'course-basic',
           titleThai: row.title_thai || '',
           titlePhonetic: row.title_phonetic || '',
+          titleMyanmarPhonetic: row.title_myanmar_phonetic || '',
+          title_myanmar_phonetic: row.title_myanmar_phonetic || '',
           titleEnglish: row.title_english || '',
           titleMyanmar: row.title_myanmar || '',
           title_myanmar: row.title_myanmar || '',
@@ -207,18 +210,20 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       const courseId = body.courseId ?? body.course_id ?? 'course-basic';
       const titleThai = body.titleThai ?? body.title_thai ?? '';
       const titlePhonetic = body.titlePhonetic ?? body.title_phonetic ?? '';
+      const titleMyanmarPhonetic = body.titleMyanmarPhonetic ?? body.title_myanmar_phonetic ?? '';
       const titleEnglish = body.titleEnglish ?? body.title_english ?? '';
       const titleMyanmar = body.titleMyanmar ?? body.title_myanmar ?? '';
       const descriptionEnglish = body.descriptionEnglish ?? body.description_english ?? body.description ?? '';
       const descriptionMyanmar = body.descriptionMyanmar ?? body.description_myanmar ?? body.description ?? '';
 
       await db.prepare(`
-        INSERT INTO lessons (id, course_id, title_thai, title_phonetic, title_english, title_myanmar, description_english, description_myanmar)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO lessons (id, course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, description_english, description_myanmar)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           course_id = excluded.course_id,
           title_thai = excluded.title_thai,
           title_phonetic = excluded.title_phonetic,
+          title_myanmar_phonetic = excluded.title_myanmar_phonetic,
           title_english = excluded.title_english,
           title_myanmar = excluded.title_myanmar,
           description_english = excluded.description_english,
@@ -228,6 +233,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         courseId,
         titleThai,
         titlePhonetic,
+        titleMyanmarPhonetic,
         titleEnglish,
         titleMyanmar,
         descriptionEnglish,
@@ -245,6 +251,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       const courseId = body.courseId ?? body.course_id ?? 'course-basic';
       const titleThai = body.titleThai ?? body.title_thai ?? '';
       const titlePhonetic = body.titlePhonetic ?? body.title_phonetic ?? '';
+      const titleMyanmarPhonetic = body.titleMyanmarPhonetic ?? body.title_myanmar_phonetic ?? '';
       const titleEnglish = body.titleEnglish ?? body.title_english ?? '';
       const titleMyanmar = body.titleMyanmar ?? body.title_myanmar ?? '';
       const descriptionEnglish = body.descriptionEnglish ?? body.description_english ?? body.description ?? '';
@@ -255,6 +262,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           course_id = ?, 
           title_thai = ?, 
           title_phonetic = ?, 
+          title_myanmar_phonetic = ?,
           title_english = ?, 
           title_myanmar = ?, 
           description_english = ?, 
@@ -264,6 +272,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         courseId,
         titleThai,
         titlePhonetic,
+        titleMyanmarPhonetic,
         titleEnglish,
         titleMyanmar,
         descriptionEnglish,

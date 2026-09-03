@@ -485,6 +485,14 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
   const [sentencePage, setSentencePage] = useState<number>(1);
   const [activePage2Idx, setActivePage2Idx] = useState<number | null>(null);
 
+  const [activeLesson, setActiveLesson] = useState<number>(0);
+  const [selectedPremiumSubject, setSelectedPremiumSubject] = useState(PREMIUM_SUBJECTS[0]);
+  const [selectedPremiumVerb, setSelectedPremiumVerb] = useState(PREMIUM_VERBS[1]);
+  const [activeSpeechWord, setActiveSpeechWord] = useState<string | null>(null);
+  const [vocabSearchQuery, setVocabSearchQuery] = useState<string>('');
+  const [qaSearchQuery, setQaSearchQuery] = useState<string>('');
+  const [conversationSearchQuery, setConversationSearchQuery] = useState<string>('');
+
   const { dynamicData, isLoading } = useDynamicData();
 
   const apiBlueBook = React.useMemo(() => {
@@ -520,16 +528,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
   const apiConsonants = (dynamicData?.alphabet || []).filter((a: any) => a.type === 'consonant');
   const apiVowels = (dynamicData?.alphabet || []).filter((a: any) => a.type === 'vowel');
 
-  const [activeLesson, setActiveLesson] = useState<number>(0);
   const blueBook = apiBlueBook;
-
-  // Premium Custom States for sentence builder
-  const [selectedPremiumSubject, setSelectedPremiumSubject] = useState(PREMIUM_SUBJECTS[0]);
-  const [selectedPremiumVerb, setSelectedPremiumVerb] = useState(PREMIUM_VERBS[1]);
-  const [activeSpeechWord, setActiveSpeechWord] = useState<string | null>(null);
-  const [vocabSearchQuery, setVocabSearchQuery] = useState<string>('');
-  const [qaSearchQuery, setQaSearchQuery] = useState<string>('');
-  const [conversationSearchQuery, setConversationSearchQuery] = useState<string>('');
 
   const triggerPremiumTTS = (text: string) => {
     triggerTTS(text);
@@ -1039,10 +1038,10 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
 
           {/* Book Navigation Tabs for Sayar Son Jai and premium-book */}
           {(bookId === 'sayar-son-jai-blue-book' || bookId === 'premium-book') && (
-            <div className="flex bg-slate-100/70 p-1 rounded-2xl mb-4 border border-slate-200/20 select-none gap-0.5">
+            <div className="flex bg-slate-100/70 p-1 rounded-2xl mb-4 border border-slate-200/20 select-none gap-1 overflow-x-auto scrollbar-none flex-nowrap">
               <button 
                 onClick={() => setActiveTab('vocab')}
-                className={`flex-1 py-1 px-1.5 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[95px] sm:min-w-0 py-1.5 px-2 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   activeTab === 'vocab'
                     ? 'bg-brand-purple text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-850'
@@ -1053,7 +1052,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               </button>
               <button 
                 onClick={() => setActiveTab('page13')}
-                className={`flex-1 py-1 px-1.5 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[95px] sm:min-w-0 py-1.5 px-2 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   activeTab === 'page13'
                     ? 'bg-brand-purple text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-850'
@@ -1064,7 +1063,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               </button>
               <button 
                 onClick={() => setActiveTab('qa')}
-                className={`flex-1 py-1 px-1.5 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[95px] sm:min-w-0 py-1.5 px-2 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   activeTab === 'qa'
                     ? 'bg-brand-purple text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-850'
@@ -1075,7 +1074,7 @@ export const TextbookReader: React.FC<TextbookReaderProps> = ({ bookId, onClose 
               </button>
               <button 
                 onClick={() => setActiveTab('conversation')}
-                className={`flex-1 py-1 px-1.5 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[95px] sm:min-w-0 py-1.5 px-2 text-[10.5px] sm:text-xs font-black tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   activeTab === 'conversation'
                     ? 'bg-brand-purple text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-850'

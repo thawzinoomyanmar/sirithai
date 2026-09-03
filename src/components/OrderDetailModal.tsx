@@ -41,6 +41,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 }) => {
   const [notes, setNotes] = useState(order.adminNotes || '');
   const [zoomImage, setZoomImage] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const matchingItem = storeItems?.find(item => 
     item.name.toLowerCase() === order.itemName.toLowerCase() || 
@@ -48,81 +49,79 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     order.itemName.toLowerCase().includes(item.id.toLowerCase())
   );
 
-  const handleApprove = async () => {
-    // 1. Save previous state for rollback
-    const previousOrder = { ...order };
-    
-    // 2. Optimistic UI update
-    const updated: PurchaseOrder = {
-      ...order,
-      status: 'completed',
-      adminNotes: notes
+  const updateServerStatus = async (status: 'approved' | 'cancelled') => {
+    const response = await fetch('/api/admin/approve-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
+      body: JSON.stringify({
+        id: order.id,
+        status,
+        adminNotes: notes,
+        courseId: order.courseId || matchingItem?.courseId,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({})) as {
+      success?: boolean;
+      error?: string;
+      warning?: string;
     };
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || `Server returned HTTP ${response.status}`);
+    }
+    return payload;
+  };
+
+  const handleApprove = async () => {
+    if (isUpdatingStatus) return;
+    const previousOrder = { ...order };
+    const updated: PurchaseOrder = { ...order, status: 'completed', adminNotes: notes };
     onUpdateOrder(updated);
-    addSystemLog('admin', `Approved order ${order.id} for student "${order.username}"`);
-    
-    // 3. Network request
+    setIsUpdatingStatus(true);
+
     try {
-      const res1 = await fetch('/api/orders', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ id: order.id, status: 'completed', adminNotes: notes })
-      });
-      if (!res1.ok) throw new Error('API /orders failed');
-      
-      const res2 = await fetch('/api/admin/approve-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ id: order.id, status: 'approved' })
-      });
-      if (!res2.ok) throw new Error('API /approve-payment failed');
-      
-      await localDB.transactions.update(order.id, { status: 'approved' });
-      onClose(); // Close only on success
-    } catch (apiErr) {
-      console.warn("Approve payment API error, rolling back:", apiErr);
-      // 4. Rollback on failure
+      const result = await updateServerStatus('approved');
+      addSystemLog('admin', `Approved order ${order.id} for student "${order.username}"`);
+      try {
+        await localDB.transactions.update(order.id, { status: 'approved' });
+      } catch (localError) {
+        console.warn('Order approved in D1, but local cache update failed:', localError);
+      }
+      if (result.warning) console.warn('[Order approval warning]', result.warning);
+      onClose();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Approve payment API error, rolling back:', error);
       onUpdateOrder(previousOrder);
-      alert('Failed to approve order on the server. Change rolled back.');
+      alert(`Failed to approve order: ${message}`);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
   const handleReject = async () => {
-    // 1. Save previous state for rollback
+    if (isUpdatingStatus) return;
     const previousOrder = { ...order };
-    
-    // 2. Optimistic UI update
-    const updated: PurchaseOrder = {
-      ...order,
-      status: 'cancelled',
-      adminNotes: notes
-    };
+    const updated: PurchaseOrder = { ...order, status: 'cancelled', adminNotes: notes };
     onUpdateOrder(updated);
-    addSystemLog('admin', `Rejected/Cancelled order ${order.id} with note: "${notes || 'No notes'}"`);
-    
-    // 3. Network request
+    setIsUpdatingStatus(true);
+
     try {
-      const res1 = await fetch('/api/orders', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ id: order.id, status: 'cancelled', adminNotes: notes })
-      });
-      if (!res1.ok) throw new Error('API /orders failed');
-      
-      const res2 = await fetch('/api/admin/approve-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ id: order.id, status: 'cancelled' })
-      });
-      if (!res2.ok) throw new Error('API /approve-payment failed');
-      
-      await localDB.transactions.update(order.id, { status: 'cancelled' });
-      onClose(); // Close only on success
-    } catch (apiErr) {
-      console.warn("Cancel payment API error, rolling back:", apiErr);
-      // 4. Rollback on failure
+      await updateServerStatus('cancelled');
+      addSystemLog('admin', `Rejected/Cancelled order ${order.id} with note: "${notes || 'No notes'}"`);
+      try {
+        await localDB.transactions.update(order.id, { status: 'cancelled' });
+      } catch (localError) {
+        console.warn('Order rejected in D1, but local cache update failed:', localError);
+      }
+      onClose();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Cancel payment API error, rolling back:', error);
       onUpdateOrder(previousOrder);
-      alert('Failed to reject order on the server. Change rolled back.');
+      alert(`Failed to reject order: ${message}`);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -460,15 +459,17 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               <button
                 type="button"
                 onClick={handleApprove}
-                className="flex-1 py-2 bg-brand-green text-white font-sans font-black text-[10.5px] uppercase tracking-wider rounded-lg hover:brightness-95 transition-all text-center flex items-center justify-center gap-1 shadow-3xs cursor-pointer"
+                disabled={isUpdatingStatus}
+                className="flex-1 py-2 bg-brand-green text-white font-sans font-black text-[10.5px] uppercase tracking-wider rounded-lg hover:brightness-95 transition-all text-center flex items-center justify-center gap-1 shadow-3xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
-                Approve
+                {isUpdatingStatus ? 'Saving…' : 'Approve'}
               </button>
               <button
                 type="button"
                 onClick={handleReject}
-                className="flex-1 py-2 bg-rose-600 text-white font-sans font-black text-[10.5px] uppercase tracking-wider rounded-lg hover:bg-rose-500 transition-all text-center flex items-center justify-center gap-1 shadow-3xs cursor-pointer"
+                disabled={isUpdatingStatus}
+                className="flex-1 py-2 bg-rose-600 text-white font-sans font-black text-[10.5px] uppercase tracking-wider rounded-lg hover:bg-rose-500 transition-all text-center flex items-center justify-center gap-1 shadow-3xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
               >
                 Reject
               </button>
@@ -508,4 +509,3 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     </div>
   );
 };
-

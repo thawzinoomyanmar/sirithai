@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360" role="img" aria-labelledby="title desc">
+  <title id="title">ฃ ขวด</title>
+  <desc id="desc">Illustration for the Thai consonant ฃ ขวด</desc>
+  <rect width="480" height="360" rx="40" fill="#e6f7ff"/>
+  <circle cx="360" cy="106" r="76" fill="#fff" opacity=".72"/>
+  <text x="360" y="137" text-anchor="middle" font-size="92" font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji">🧴</text>
+  <text x="72" y="150" text-anchor="middle" font-size="112" font-weight="800" fill="#2d2744" font-family="Thonburi,Noto Sans Thai,sans-serif">ฃ</text>
+  <rect x="42" y="218" width="396" height="5" rx="3" fill="#38bdf8"/>
+  <text x="240" y="285" text-anchor="middle" font-size="42" font-weight="700" fill="#2d2744" font-family="Thonburi,Noto Sans Thai,sans-serif">ฃ ขวด</text>
+  <circle cx="416" cy="320" r="19" fill="#38bdf8"/>
+  <path d="M409 320h14M416 313v14" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+</svg>

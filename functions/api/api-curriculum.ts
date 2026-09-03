@@ -50,6 +50,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         course_id TEXT,
         title_thai TEXT,
         title_phonetic TEXT,
+        title_myanmar_phonetic TEXT,
         title_english TEXT,
         title_myanmar TEXT,
         dialogue TEXT,
@@ -95,6 +96,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       const course_id = body.course_id || body.courseId || 'course-basic';
       const title_thai = body.title_thai || body.titleThai || '';
       const title_phonetic = body.title_phonetic || body.titlePhonetic || '';
+      const title_myanmar_phonetic = body.title_myanmar_phonetic || body.titleMyanmarPhonetic || '';
       const title_english = body.title_english || body.titleEnglish || '';
       const title_myanmar = body.title_myanmar || body.titleMyanmar || '';
       const dialogue = body.dialogue ? (typeof body.dialogue === 'string' ? body.dialogue : JSON.stringify(body.dialogue)) : '[]';
@@ -106,20 +108,20 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         if (existing) {
           await db.prepare(`
             UPDATE lessons 
-            SET course_id = ?, title_thai = ?, title_phonetic = ?, title_english = ?, title_myanmar = ?, dialogue = ?, grammar = ?, quizzes = ?
+            SET course_id = ?, title_thai = ?, title_phonetic = ?, title_myanmar_phonetic = ?, title_english = ?, title_myanmar = ?, dialogue = ?, grammar = ?, quizzes = ?
             WHERE id = ?
-          `).bind(course_id, title_thai, title_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes, id).run();
+          `).bind(course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes, id).run();
         } else {
           await db.prepare(`
-            INSERT INTO lessons (id, course_id, title_thai, title_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(id, course_id, title_thai, title_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes).run();
+            INSERT INTO lessons (id, course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(id, course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes).run();
         }
       } else {
         await db.prepare(`
-          INSERT INTO lessons (course_id, title_thai, title_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(course_id, title_thai, title_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes).run();
+          INSERT INTO lessons (course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, dialogue, grammar, quizzes).run();
       }
 
       return jsonResponse({

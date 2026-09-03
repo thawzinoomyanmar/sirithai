@@ -27,6 +27,23 @@ import { localDB } from './utils/db';
 import { getAuthValue, setAuthValue, removeAuthValue, getAuthValueSync } from './utils/authStorage';
 import { fetchLessonDetail } from './hooks/useApiData';
 import { playGlobalAudio, speakGlobalText, stopGlobalAudio } from './utils/audioManager';
+import { createWebAudioPlayer, type WebAudioPlayer } from './utils/webAudioPlayer';
+import { openResourceInNewTab } from './utils/resourceLinks';
+import { AudioEbookPlayer } from './components/AudioEbookPlayer';
+import { AdminContentManager } from './components/AdminContentManager';
+import { AdminDataEntryDashboard } from './components/AdminDataEntryDashboard';
+
+const dedupeListByContent = (list: any[]) => {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  return list.filter(item => {
+    const content = (item?.thai || item?.text_thai || item?.textThai || item?.title || item?.english || item?.name || '').trim().toLowerCase();
+    const key = content || (item?.id ? String(item.id) : '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const formatGrammarExtMap = (rawList: any[]) => {
   const map: Record<string | number, any> = {};
@@ -107,6 +124,13 @@ const formatGrammarExtMap = (rawList: any[]) => {
     if (conversation.length > 0) map[chNum].conversation.push(...conversation);
     if (examplesList.length > 0) map[chNum].examples.push(...examplesList);
 
+    map[chNum].vocab = dedupeListByContent(map[chNum].vocab);
+    map[chNum].sentences = dedupeListByContent(map[chNum].sentences);
+    map[chNum].qa = dedupeListByContent(map[chNum].qa);
+    map[chNum].dialogue = dedupeListByContent(map[chNum].dialogue);
+    map[chNum].conversation = dedupeListByContent(map[chNum].conversation);
+    map[chNum].examples = dedupeListByContent(map[chNum].examples);
+
     map[String(chNum)] = map[chNum];
     map[`chapter-${chNum}`] = map[chNum];
     if (item.id) map[item.id] = map[chNum];
@@ -146,23 +170,25 @@ const getGrammarExtDataForChapter = (chapterId: any, titleEnglish?: string, titl
   const matchedLesson = fallbackLessons.find((l: any) => l?.id === numId || l?.id === chapterId || String(l?.id) === String(chapterId));
 
   // 1. Vocab list
-  let vocab = (data && Array.isArray(data.vocab) && data.vocab.length > 0) ? [...data.vocab] : [];
-  if (vocab.length === 0 && matchedLesson && Array.isArray(matchedLesson.vocab) && matchedLesson.vocab.length > 0) {
-    vocab = [...matchedLesson.vocab];
+  let rawVocab = (data && Array.isArray(data.vocab) && data.vocab.length > 0) ? [...data.vocab] : [];
+  if (rawVocab.length === 0 && matchedLesson && Array.isArray(matchedLesson.vocab) && matchedLesson.vocab.length > 0) {
+    rawVocab = [...matchedLesson.vocab];
   }
-  if (vocab.length === 0 && data && Array.isArray(data.grammarList)) {
+  if (rawVocab.length === 0 && data && Array.isArray(data.grammarList)) {
     for (const rule of data.grammarList) {
       if (Array.isArray(rule.examples) && rule.examples.length > 0) {
-        vocab.push(...rule.examples);
+        rawVocab.push(...rule.examples);
       }
     }
   }
+  const vocab = dedupeListByContent(rawVocab);
 
   // 2. Grammar list
-  let grammarList = (data && Array.isArray(data.grammarList) && data.grammarList.length > 0) ? [...data.grammarList] : [];
-  if (grammarList.length === 0 && matchedLesson && Array.isArray(matchedLesson.grammarNotes) && matchedLesson.grammarNotes.length > 0) {
-    grammarList = [...matchedLesson.grammarNotes];
+  let rawGrammarList = (data && Array.isArray(data.grammarList) && data.grammarList.length > 0) ? [...data.grammarList] : [];
+  if (rawGrammarList.length === 0 && matchedLesson && Array.isArray(matchedLesson.grammarNotes) && matchedLesson.grammarNotes.length > 0) {
+    rawGrammarList = [...matchedLesson.grammarNotes];
   }
+  const grammarList = dedupeListByContent(rawGrammarList);
 
   // 3. Dialogue list
   let rawDialogueList = (data && Array.isArray(data.dialogueList) && data.dialogueList.length > 0) ? [...data.dialogueList] : [];
@@ -264,7 +290,14 @@ import {
   CreditCard,
   GripVertical,
   Megaphone,
-  AlertTriangle
+  AlertTriangle,
+  Headphones,
+  SkipBack,
+  SkipForward,
+  Pause,
+  Play,
+  Mail,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSingleSentenceEnglish, getMyanmarPhonetic } from './utils/sentenceUtils';
@@ -918,6 +951,109 @@ function CustomSignIn() {
   );
 }
 
+const EBOOK_AUDIO_DATA = [
+  {
+    id: 'ebook-1',
+    title: 'Basic Thai Alphabet Workbook',
+    subtitle: 'ထိုင်းအခြေခံအက္ခရာ သင်ပုန်းကြီး လက်စွဲ',
+    author: 'KRU JANE',
+    color: 'blue',
+    iconType: 'abcd',
+    trackCountLabel: '2 Spoken Track(s)',
+    tracks: [
+      {
+        id: 't1-1',
+        trackNumber: '01',
+        title: 'Consonant Classes & High/Low Tones',
+        subtitle: 'အက္ခရာအုပ်စုများနှင့် အသံနိမ့်မြင့်စနစ်',
+        duration: '04:30',
+        durationSec: 270,
+        audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
+        phrases: [
+          { id: 'p1', thai: 'ก ไก่', phonetic: 'ko kai', myanmar: 'က ကလေး' },
+          { id: 'p2', thai: 'ข ไข่', phonetic: 'kho khai', myanmar: 'ခ ဥ' },
+          { id: 'p3', thai: 'ค ควาย', phonetic: 'kho khwai', myanmar: 'ဂ ကျွဲ' },
+        ]
+      },
+      {
+        id: 't1-2',
+        trackNumber: '02',
+        title: 'Compound Vowels Practice',
+        subtitle: 'သရတွဲ ပေါင်းစပ်လေ့ကျင့်မှု',
+        duration: '05:15',
+        durationSec: 315,
+        audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
+        phrases: [
+          { id: 'p4', thai: 'สระ อา', phonetic: 'sara a', myanmar: 'အာ သရ' },
+          { id: 'p5', thai: 'สระ อี', phonetic: 'sara i', myanmar: 'အီ သရ' },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'ebook-2',
+    title: 'Basic Thai Grammar Pocketbook',
+    subtitle: 'ထိုင်းစကားပြော အခြေခံသဒ္ဒါ အိတ်ဆောင်စာအုပ်',
+    author: 'SAYAR THURA',
+    color: 'purple',
+    iconType: 'book',
+    trackCountLabel: '2 Spoken Track(s)',
+    tracks: [
+      {
+        id: 't2-1',
+        trackNumber: '01',
+        title: 'Essential Verbs & Daily Sentences',
+        subtitle: 'မရှိမဖြစ် ကြိယာများနှင့် နေ့စဉ်သုံးဝါကျများ',
+        duration: '05:40',
+        durationSec: 340,
+        audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
+        phrases: [
+          { id: 'p6', thai: 'กินข้าว', phonetic: 'kin khao', myanmar: 'ထမင်းစားသည်' },
+          { id: 'p7', thai: 'ไปไหน', phonetic: 'pai nai', myanmar: 'ဘယ်သွားမလဲ' },
+        ]
+      },
+      {
+        id: 't2-2',
+        trackNumber: '02',
+        title: 'Questions & Polite Particles',
+        subtitle: 'အမေးဝါကျများနှင့် ယဉ်ကျေးသောစကားလုံးများ',
+        duration: '06:05',
+        durationSec: 365,
+        audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
+        phrases: [
+          { id: 'p8', thai: 'สบายดีไหม', phonetic: 'sabai di mai', myanmar: 'နေကောင်းရဲ့လား' },
+          { id: 'p9', thai: 'ขอบคุณครับ', phonetic: 'khop khun khrap', myanmar: 'ကျေးဇူးတင်ပါတယ်' },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'ebook-3',
+    title: 'Business Thai Email Templates',
+    subtitle: 'ရုံးသုံးထိုင်းအီးမေးလ်ရေးသားနည်း လက်စွဲ',
+    author: 'KRU JANE',
+    color: 'amber',
+    iconType: 'email',
+    trackCountLabel: '1 Spoken Track(s)',
+    tracks: [
+      {
+        id: 't3-1',
+        trackNumber: '01',
+        title: 'Formal Inquiries & Client Communication',
+        subtitle: 'အလုပ်အကိုင်စုံစမ်းမေးမြန်းခြင်းနှင့် ဆက်သွယ်ရေး',
+        duration: '06:10',
+        durationSec: 370,
+        audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
+        phrases: [
+          { id: 'p10', thai: 'ติดต่อสอบถาม', phonetic: 'tit-to son-tham', myanmar: 'ဆက်သွယ်စုံစမ်းရန်' },
+          { id: 'p11', thai: 'เรียน คุณลูกค้า', phonetic: 'rian khun luk-kha', myanmar: 'လေးစားအပ်ပါသော အဝယ်တော်လူကြီးမင်း' },
+          { id: 'p12', thai: 'ขอแสดงความนับถือ', phonetic: 'kho sa-daeng khwam nap-thue', myanmar: 'လေးစားစွာဖြင့်' },
+        ]
+      }
+    ]
+  }
+];
+
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -952,7 +1088,7 @@ export default function App() {
           const uniqueChapterNumbers = Array.from(new Set(data.data.map((item: any) => item.chapter_number || item.chapterNumber || 1))).sort((a, b) => Number(a) - Number(b));
           if (uniqueChapterNumbers.length > 0) {
             const chaptersList = uniqueChapterNumbers.map((chNum) => {
-              const chapterData = map[chNum] || {};
+              const chapterData = (map as any)[chNum as number] || {};
               return {
                 id: chNum,
                 titleEnglish: chapterData.title || `Chapter ${chNum}`,
@@ -1315,7 +1451,7 @@ export default function App() {
           const lessonsData: any = await lessonsRes.json();
           console.log("User lessons received:", lessonsData);
           if (lessonsData && lessonsData.success && Array.isArray(lessonsData.data) && lessonsData.data.length > 0) {
-            const sorted = sortLessonsNaturally(lessonsData.data);
+            const sorted = sortLessonsNaturally(lessonsData.data as Lesson[]);
             setLessons(sorted);
             localStorage.setItem('thai_lessons_curriculum', JSON.stringify(sorted));
           }
@@ -1364,7 +1500,9 @@ export default function App() {
               courses: d1Courses,
               pdf_vocabulary: d1PdfVocab,
               grammar_ext: d1GrammarExt,
-              dialogue: d1Dialogue
+              dialogue: d1Dialogue,
+              conversation: d1Conversation,
+              store_items: d1StoreItems
             } = result.data;
             
             if (d1Lessons && Array.isArray(d1Lessons) && d1Lessons.length > 0) {
@@ -1387,6 +1525,10 @@ export default function App() {
             if (d1Courses && Array.isArray(d1Courses) && d1Courses.length > 0) {
               setCourses(d1Courses);
               localStorage.setItem('thai_courses_curriculum', JSON.stringify(d1Courses));
+            }
+            if (d1StoreItems && Array.isArray(d1StoreItems) && d1StoreItems.length > 0) {
+              setStoreItems(d1StoreItems);
+              localStorage.setItem('thai_store_items_list', JSON.stringify(d1StoreItems));
             }
             if (d1PdfVocab) {
               localStorage.setItem('thai_pdf_vocabulary', JSON.stringify(d1PdfVocab));
@@ -1712,7 +1854,7 @@ export default function App() {
 
   const [adminEditTab, setAdminEditTab] = useState<'metadata' | 'vocabulary' | 'dialogue' | 'grammar' | 'quiz'>('metadata');
   const [adminCategory, setAdminCategory] = useState<'students' | 'curriculum'>('students');
-  const [adminHubTab, setAdminHubTab] = useState<'orders' | 'accounts' | 'courses' | 'store' | 'orientation' | 'grammar' | 'brand'>('orders');
+  const [adminHubTab, setAdminHubTab] = useState<'orders' | 'accounts' | 'cms' | 'courses' | 'lessons' | 'store' | 'orientation' | 'grammar' | 'brand'>('orders');
 
   const [adminSelectedOrientId, setAdminSelectedOrientId] = useState<string>('better-thai');
   const [adminSelectedGrammarChId, setAdminSelectedGrammarChId] = useState<number>(1);
@@ -2262,7 +2404,12 @@ export default function App() {
 
   useEffect(() => {
     setCurrentGrammarExamplePage(0);
-  }, [currentGrammarPageIndex, activeLessonId]);
+  }, [currentGrammarPageIndex]);
+
+  useEffect(() => {
+    setCurrentGrammarPageIndex(0);
+    setCurrentGrammarExamplePage(0);
+  }, [activeLessonId]);
 
   const [currentHandbookExamplePage, setCurrentHandbookExamplePage] = useState<number>(0);
   const [expandedChapterRuleIndex, setExpandedChapterRuleIndex] = useState<number>(0);
@@ -2343,6 +2490,20 @@ export default function App() {
   const [exampleModeForRules, setExampleModeForRules] = useState<{[key: string]: 'standard' | 'more' | 'formal' | 'casual'}>({});
   const [audioSpeedIndex, setAudioSpeedIndex] = useState<number>(0); // 0: Normal, 1: Slow, 2: Much Slower
 
+  const [selectedAudioEbookId, setSelectedAudioEbookId] = useState<string>('ebook-3');
+  const [selectedAudioTrackId, setSelectedAudioTrackId] = useState<string>('t3-1');
+  const [isAudioPlayerPlaying, setIsAudioPlayerPlaying] = useState<boolean>(false);
+  const [audioPlayerCurrentTime, setAudioPlayerCurrentTime] = useState<number>(0);
+  const [audioPlayerDuration, setAudioPlayerDuration] = useState<number>(370);
+  const [audioPlayerSpeed, setAudioPlayerSpeed] = useState<number>(1);
+  const [audioPhraseSearch, setAudioPhraseSearch] = useState<string>('');
+  const audioPlayerRef = useRef<WebAudioPlayer | null>(null);
+
+  useEffect(() => () => {
+    audioPlayerRef.current?.destroy();
+    audioPlayerRef.current = null;
+  }, []);
+
   const [brandColor, setBrandColor] = useState<string>(() => {
     return localStorage.getItem('thai_brand_color') || '#8234ea';
   });
@@ -2407,13 +2568,12 @@ export default function App() {
   const [purchasedCourses, setPurchasedCourses] = useState<any[]>([]);
   const [isPurchasedCoursesLoading, setIsPurchasedCoursesLoading] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchPurchasedCourses = async () => {
-      const activeUserId = (user && user.id) 
-        ? user.id 
-        : currentUser ? `user_${currentUser.replace(/[^a-zA-Z0-9]/g, '_')}` : 'user_student_1';
-
-      if (!activeUserId) return;
+  const fetchPurchasedCourses = useCallback(async () => {
+      const activeUserId = user?.id || currentUser;
+      if (!activeUserId || isAdmin) {
+        setPurchasedCourses([]);
+        return;
+      }
 
       setIsPurchasedCoursesLoading(true);
       try {
@@ -2428,14 +2588,27 @@ export default function App() {
         }
       } catch (e) {
         console.error('[Purchased Courses Fetch Error]:', e);
-        setPurchasedCourses([]);
       } finally {
         setIsPurchasedCoursesLoading(false);
       }
-    };
+  }, [user?.id, currentUser, isAdmin]);
 
+  useEffect(() => {
     fetchPurchasedCourses();
-  }, [user, isUserLoaded, currentUser]);
+
+    if ((!user?.id && !currentUser) || isAdmin) return;
+    const interval = window.setInterval(fetchPurchasedCourses, 5000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') fetchPurchasedCourses();
+    };
+    window.addEventListener('focus', fetchPurchasedCourses);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', fetchPurchasedCourses);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [fetchPurchasedCourses, user?.id, currentUser, isAdmin, isUserLoaded]);
 
   // Dynamically load auth session from local storage on mount and listen to changes
   useEffect(() => {
@@ -2734,6 +2907,27 @@ export default function App() {
     return DEFAULT_STORE_ITEMS;
   });
 
+  const [resourceCatalog, setResourceCatalog] = useState<any[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+    fetch(`${apiBase}/api/resources`, { signal: controller.signal })
+      .then(async response => {
+        const payload: any = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || `Resources request failed (${response.status})`);
+        }
+        setResourceCatalog(Array.isArray(payload.data) ? payload.data : []);
+      })
+      .catch(error => {
+        if (error?.name !== 'AbortError') console.error('Unable to load D1 resources:', error);
+      });
+
+    return () => controller.abort();
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('thai_store_items_list', JSON.stringify(storeItems));
   }, [storeItems]);
@@ -2753,6 +2947,16 @@ export default function App() {
   const [storeFormCourseId, setStoreFormCourseId] = useState<string>('');
   const [storeFormPdfFileName, setStoreFormPdfFileName] = useState<string>('');
   const [storeFormPdfDownloadUrl, setStoreFormPdfDownloadUrl] = useState<string>('');
+
+  // Admin Lesson Entry Form state variables (Direct D1 Database insertion)
+  const [adminLessonCourseId, setAdminLessonCourseId] = useState<string>('course-basic');
+  const [adminLessonId, setAdminLessonId] = useState<string>('');
+  const [adminLessonTitleThai, setAdminLessonTitleThai] = useState<string>('');
+  const [adminLessonTitlePhonetic, setAdminLessonTitlePhonetic] = useState<string>('');
+  const [adminLessonTitleEnglish, setAdminLessonTitleEnglish] = useState<string>('');
+  const [adminLessonTitleMyanmar, setAdminLessonTitleMyanmar] = useState<string>('');
+  const [adminLessonDescription, setAdminLessonDescription] = useState<string>('');
+  const [isPublishingLessonD1, setIsPublishingLessonD1] = useState<boolean>(false);
 
   useEffect(() => {
     const activeItem = storeItems.find(item => item.id === adminSelectedStoreId);
@@ -2801,7 +3005,11 @@ export default function App() {
     setIsSyncingD1Orders(true);
     try {
       const isAdminUser = localStorage.getItem('thai_user_is_admin') === 'true' || isAdmin;
-      const endpoint = isAdminUser ? '/api/admin/transactions' : ((user?.id) ? `/api/orders?userId=${user.id}` : '/api/orders');
+      const activeUserId = user?.id || currentUser;
+      if (!isAdminUser && !activeUserId) return;
+      const endpoint = isAdminUser
+        ? '/api/admin/transactions'
+        : `/api/orders?userId=${encodeURIComponent(activeUserId!)}`;
       const res = await fetch(endpoint);
       if (res.ok) {
         const data: any = await res.json();
@@ -2809,6 +3017,7 @@ export default function App() {
         if (Array.isArray(rawList)) {
           const mapped: PurchaseOrder[] = rawList.map((t: any) => ({
             id: t.id,
+            courseId: t.course_id || t.courseId || undefined,
             username: t.student_full_name || t.user_id || t.username || 'Student',
             itemName: t.course_name || t.item_name || t.itemName || 'Thai Language Course',
             itemType: t.item_type || t.itemType || 'course',
@@ -2829,20 +3038,28 @@ export default function App() {
     } finally {
       setIsSyncingD1Orders(false);
     }
-  }, [isAdmin, user?.id]);
+  }, [isAdmin, user?.id, currentUser]);
 
   useEffect(() => {
     fetchOrdersFromD1();
 
-    // Poll for new orders every 5 seconds if we're on the admin dashboard's orders tab
-    const interval = setInterval(() => {
-      if (location.pathname === '/admin/dashboard' && adminHubTab === 'orders') {
+    const activeUserId = user?.id || currentUser;
+    const interval = window.setInterval(() => {
+      const shouldRefreshAdmin = isAdmin && location.pathname === '/admin/dashboard' && adminHubTab === 'orders';
+      const shouldRefreshStudent = !isAdmin && Boolean(activeUserId);
+      if (shouldRefreshAdmin || shouldRefreshStudent) {
         fetchOrdersFromD1();
       }
     }, 5000);
 
-    return () => clearInterval(interval);
-  }, [adminHubTab]);
+    const refreshOnFocus = () => fetchOrdersFromD1();
+    window.addEventListener('focus', refreshOnFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshOnFocus);
+    };
+  }, [adminHubTab, currentUser, user?.id, isAdmin, fetchOrdersFromD1]);
 
   const handleCreateNewOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2887,17 +3104,18 @@ export default function App() {
     setShowCreateOrderModal(false);
   };
 
-  const handleAdminApproveOrder = useCallback(async (orderId: string, itemName: string, username: string) => {
+  const handleAdminApproveOrder = useCallback(async (orderId: string, itemName: string, username: string, courseId?: string) => {
     const previousOrders = [...orders];
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'approved' } : o));
     addSystemLog('admin', `Approved purchase of "${itemName}" by "${username}"`);
     try {
-      const res = await fetch('/api/admin/update-status', {
+      const res = await fetch('/api/admin/approve-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
-        body: JSON.stringify({ transactionId: orderId, id: orderId, status: 'approved' })
+        body: JSON.stringify({ transactionId: orderId, id: orderId, status: 'approved', courseId })
       });
-      if (!res.ok) throw new Error('API failed');
+      const payload: any = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.success) throw new Error(payload.error || 'API failed');
       fetchOrdersFromD1();
     } catch (err) {
       console.warn("Approve order D1 error, rolling back:", err);
@@ -2915,20 +3133,53 @@ export default function App() {
     addSystemLog(currentUser || 'student', `Downloaded PDF companion resource: "${res.name}"`);
   }, [currentUser]);
 
-  const handlePurchaseResource = useCallback((res: any, courseName: string, courseInstructor?: string) => {
+  const openEnrollmentPortal = useCallback((courseData: {
+    title?: string;
+    name?: string;
+    price?: string | number;
+    priceAmount?: number;
+    type?: string;
+    itemType?: string;
+    id?: string;
+    description?: string;
+  }) => {
+    const isAuth = isLoggedIn || !!user || getAuthValueSync('thai_user_logged_in') === 'true' || !!localStorage.getItem('userToken') || !!localStorage.getItem('thai_user_logged_in');
+
+    if (!isAuth) {
+      alert('Please login to enroll in premium courses.');
+      navigate('/sign-in');
+      return false;
+    }
+
+    const rawTitle = courseData.title || courseData.name || "Advanced Business Thai Speaking";
+    const rawPriceStr = String(courseData.price ?? courseData.priceAmount ?? '35000');
+    const cleanPriceNum = typeof courseData.price === 'number'
+      ? courseData.price
+      : typeof courseData.priceAmount === 'number'
+      ? courseData.priceAmount
+      : parseInt(rawPriceStr.replace(/[^0-9]/g, '') || '35000', 10);
+
+    const requestedItemType = String(courseData.itemType || courseData.type || 'e-book').toLowerCase();
+    const normalizedItemType = requestedItemType === 'course' || requestedItemType === 'premium course'
+      ? 'course'
+      : ['tutoring', 'vip-package', 'certificate'].includes(requestedItemType)
+        ? requestedItemType
+        : 'e-book';
+
     const checkoutProduct = {
-      id: res.id,
-      name: res.name,
-      nameMm: res.nameMm || '',
-      priceAmount: res.priceAmount,
+      id: courseData.id || `item_${Date.now()}`,
+      name: rawTitle,
+      nameMm: (courseData as any).nameMm || '',
+      priceAmount: cleanPriceNum,
       currency: 'MMK' as const,
-      itemType: 'e-book',
-      duration: "Companion eBook Study Resource",
-      description: `Direct premium supplementary eBook for ${courseName}`,
-      descriptionMm: res.nameMm || '',
-      instructor: courseInstructor || "Kru Jane & Sayar Thura",
-      includes: ["Permanent direct download URL", "Study exercises", "Vocabulary sheets"]
+      itemType: normalizedItemType,
+      duration: courseData.type || "PREMIUM RESOURCE",
+      description: courseData.description || `Direct premium supplementary asset for ${rawTitle}`,
+      descriptionMm: (courseData as any).descriptionMm || '',
+      instructor: (courseData as any).instructor || "Kru Jane & Sayar Thura",
+      includes: ["Permanent direct access", "Interactive study materials", "Full workbook & exercises"]
     };
+
     setGatewayCourse(checkoutProduct as any);
     setGatewayPhone(progress.masteredWords.length > 0 ? "09-791112233" : "09-");
     setGatewayEmail(currentUser ? `${currentUser.toLowerCase()}@classroom.edu` : "student@classroom.edu");
@@ -2937,7 +3188,20 @@ export default function App() {
     setGatewayOtp('');
     setGatewayTimer(180);
     setIsGatewayOpen(true);
-  }, [progress.masteredWords.length, currentUser]);
+    return true;
+  }, [isLoggedIn, user, navigate, progress.masteredWords.length, currentUser]);
+
+  const handlePurchaseResource = useCallback((res: any, courseName: string, courseInstructor?: string) => {
+    openEnrollmentPortal({
+      id: res.id,
+      title: res.name,
+      name: res.name,
+      price: res.priceAmount || 15000,
+      type: "PREMIUM RESOURCE",
+      description: `Direct premium supplementary eBook for ${courseName}`,
+      instructor: courseInstructor
+    });
+  }, [openEnrollmentPortal]);
 
   const handleAdminRejectOrder = useCallback(async (orderId: string) => {
     const previousOrders = [...orders];
@@ -2989,13 +3253,12 @@ export default function App() {
 
 
 
-  // Load progress from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('thai_mm_progress_v1');
+  // Load progress dynamically from localStorage and API
+  const loadLatestProgress = useCallback(() => {
+    const saved = localStorage.getItem('userProgress') || localStorage.getItem('thai_mm_progress_v1');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Calculate streak
         const today = new Date().toISOString().split('T')[0];
         const lastActive = parsed.lastActiveDate;
         let currentStreak = parsed.streak || 1;
@@ -3005,20 +3268,42 @@ export default function App() {
           if (lastActive === yesterday) {
             currentStreak += 1;
           } else {
-            currentStreak = 1; // broken streak
+            currentStreak = 1;
           }
         }
 
-        setProgress({
-          ...parsed,
+        const loaded: ProgressState = {
+          completedLessons: Array.isArray(parsed.completedLessons) ? parsed.completedLessons : [],
+          masteredWords: Array.isArray(parsed.masteredWords) ? parsed.masteredWords : [],
+          totalXp: typeof parsed.totalXp === 'number' ? parsed.totalXp : (typeof parsed.xp === 'number' ? parsed.xp : 0),
           streak: currentStreak,
-          lastActiveDate: today
-        });
+          lastActiveDate: today,
+          quizHighScores: parsed.quizHighScores || {}
+        };
+
+        setProgress(loaded);
       } catch (e) {
         console.error("Error reading saved progress", e);
       }
     }
   }, []);
+
+  useEffect(() => {
+    loadLatestProgress();
+
+    const handleProgressChange = () => loadLatestProgress();
+    window.addEventListener('progressUpdated', handleProgressChange);
+    window.addEventListener('userProgressUpdated', handleProgressChange);
+    window.addEventListener('thai_progress_updated', handleProgressChange);
+    window.addEventListener('storage', handleProgressChange);
+
+    return () => {
+      window.removeEventListener('progressUpdated', handleProgressChange);
+      window.removeEventListener('userProgressUpdated', handleProgressChange);
+      window.removeEventListener('thai_progress_updated', handleProgressChange);
+      window.removeEventListener('storage', handleProgressChange);
+    };
+  }, [loadLatestProgress]);
 
   // Helper to generate a genuine educational PDF guide on the fly and trigger file download
   const triggerPdfDownload = (fileName: string, title: string, description: string, languageHighlights: { thai: string, pronunciation: string, myanmar: string }[]) => {
@@ -3090,12 +3375,14 @@ startxref
     addSystemLog(currentUser || "Student", `Downloaded free study textbook: "${title}"`);
   };
 
-  // Save progress changes
+  // Save progress changes and dispatch events for instant UI reactivity
   const saveProgress = (newState: ProgressState) => {
     setProgress(newState);
     localStorage.setItem('thai_mm_progress_v1', JSON.stringify(newState));
+    localStorage.setItem('userProgress', JSON.stringify(newState));
+
     if (isLoggedIn && currentUser && !isAdmin) {
-      // Sync XP dynamically in the user list
+      // Sync XP dynamically in the registered user list
       setRegisteredUsers((prev) => {
         const nextList = prev.map((u) => 
           (u?.username || '').toLowerCase() === (currentUser || '').toLowerCase() 
@@ -3105,7 +3392,22 @@ startxref
         localStorage.setItem('thai_registered_users_list', JSON.stringify(nextList));
         return nextList;
       });
+
+      // Post progress update to Cloudflare D1 API asynchronously
+      fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser,
+          progressData: newState
+        })
+      }).catch(err => console.warn('D1 progress sync notice:', err));
     }
+
+    // Dispatch custom events to immediately notify Profile UI and other components
+    window.dispatchEvent(new Event('progressUpdated'));
+    window.dispatchEvent(new Event('userProgressUpdated'));
+    window.dispatchEvent(new CustomEvent('thai_progress_updated', { detail: newState }));
   };
 
 
@@ -3283,6 +3585,7 @@ startxref
       course_id: lesson.courseId || 'course-basic',
       title_thai: lesson.titleThai || '',
       title_phonetic: lesson.titlePhonetic || '',
+      title_myanmar_phonetic: lesson.titleMyanmarPhonetic || '',
       title_english: lesson.titleEnglish || '',
       title_myanmar: lesson.titleMyanmar || '',
       dialogue: lesson.dialogue || [],
@@ -3978,12 +4281,15 @@ startxref
     saveProgress(newState);
   };
 
-  const handleLessonCompleted = (lessonId: number) => {
-    if (!progress.completedLessons.includes(lessonId)) {
-      const newState = {
+  const handleLessonCompleted = (lessonId: number | string) => {
+    const numId = typeof lessonId === 'number' ? lessonId : (parseInt(String(lessonId).replace(/\D/g, '') || '0', 10) || lessonId);
+    const isAlreadyDone = progress.completedLessons.some((id: any) => String(id) === String(lessonId) || String(id) === String(numId));
+
+    if (!isAlreadyDone) {
+      const newState: ProgressState = {
         ...progress,
-        completedLessons: [...progress.completedLessons, lessonId],
-        totalXp: progress.totalXp + 150 // +150 XP bonus for completing entire lesson quiz!
+        completedLessons: [...progress.completedLessons, numId as number],
+        totalXp: progress.totalXp + 150
       };
       saveProgress(newState);
     }
@@ -4265,6 +4571,8 @@ startxref
 
   const handleTabClick = (tab: 'lessons' | 'notebook' | 'courses' | 'profile' | 'admin') => {
     setShowVocabPage(false);
+    setActiveEbookId(null);
+    setActiveReadingResource(null);
     if (tab === 'lessons') {
       if (dashboardTab === 'lessons' && activeLessonId !== null) {
         setActiveLessonId(null);
@@ -4299,20 +4607,26 @@ startxref
   const isCoursesActive = ['orientation', 'handbook', 'alphabet'].includes(dashboardTab);
 
   const isCourseUnlocked = (courseId: string) => {
-    if (currentUser === 'admin' || (currentUser && registeredUsers.find(u => u?.username === currentUser)?.role === 'admin')) {
-      return true;
-    }
-    if (courseId === 'course-basic') {
-      return true;
-    }
-    if (Array.isArray(unlockedCourses) && unlockedCourses.includes(courseId)) {
-      return true;
-    }
-    return Array.isArray(orders) && orders.some(o => 
-      (o?.username || "").toLowerCase() === (currentUser || "").toLowerCase() && 
-      o?.status === 'completed' &&
-      (o?.id === courseId || (o?.itemName || "").toLowerCase().includes((courseId || "").toLowerCase().replace('course-', '')))
+    if (courseId === 'course-basic' || isAdmin || unlockedCourses.includes(courseId)) return true;
+
+    const normalizedCourseId = courseId.toLowerCase();
+    const hasEnrollment = purchasedCourses.some(course =>
+      [course?.id, course?.course_id, course?.access_course_id]
+        .filter(Boolean)
+        .some(id => String(id).toLowerCase() === normalizedCourseId)
     );
+    if (hasEnrollment) return true;
+
+    const validUserIds = [user?.id, currentUser].filter(Boolean).map(id => String(id).toLowerCase());
+    const courseName = courses.find(course => course.id.toLowerCase() === normalizedCourseId)?.name?.toLowerCase();
+    return orders.some(order => {
+      const status = String(order?.status || '').toLowerCase();
+      const belongsToUser = validUserIds.includes(String(order?.username || '').toLowerCase());
+      const matchesCourse = String(order?.courseId || '').toLowerCase() === normalizedCourseId ||
+        String(order?.itemName || '').toLowerCase().includes(normalizedCourseId) ||
+        Boolean(courseName && String(order?.itemName || '').toLowerCase().includes(courseName));
+      return belongsToUser && ['approved', 'completed', 'active'].includes(status) && matchesCourse;
+    });
   };
 
   const DEFAULT_COURSES: Course[] = [
@@ -4332,7 +4646,7 @@ startxref
       id: "course-business",
       name: "Advanced Business Thai Speaking & Letters Course",
       nameMm: "အလုပ်အကိုင်နှင့် စီးပွားရေးသုံး အဆင့်မြင့် ထိုင်းစကားပြောသင်တန်း",
-      priceAmount: 65000,
+      priceAmount: 35000,
       currency: "MMK",
       duration: "8 Weeks",
       description: "Best for career professionals, translators, and cross-border business seekers.",
@@ -4381,18 +4695,26 @@ startxref
     if (sorted.length > 0) {
       setSelectedCourseTab(sorted[0].id);
     }
-  }, [currentUser, orders, courses]);
+  }, [currentUser, orders, courses, purchasedCourses]);
 
   const isStoreItemUnlocked = (itemId: string, itemPrice: number) => {
     if (itemPrice === 0) return true;
     if (currentUser === 'admin' || (currentUser && registeredUsers.find(u => u.username === currentUser)?.role === 'admin')) {
       return true;
     }
-    return orders.some(o => 
-      o.username.toLowerCase() === (currentUser || "").toLowerCase() && 
-      o.status === 'completed' &&
-      (o.id.toLowerCase() === itemId.toLowerCase() || o.itemName.toLowerCase().includes(itemId.trim().toLowerCase()))
-    );
+    const normalizedItemId = itemId.trim().toLowerCase();
+    const validUserIds = [user?.id, currentUser]
+      .filter(Boolean)
+      .map(value => String(value).toLowerCase());
+
+    return orders.some(order => {
+      const belongsToUser = validUserIds.includes(String(order.username || '').toLowerCase());
+      const approved = ['approved', 'completed', 'active'].includes(String(order.status || '').toLowerCase());
+      const matchesItem = String(order.courseId || '').toLowerCase() === normalizedItemId ||
+        String(order.id || '').toLowerCase() === normalizedItemId ||
+        String(order.itemName || '').toLowerCase().includes(normalizedItemId);
+      return belongsToUser && approved && matchesItem;
+    });
   };
 
   const speakThai = async (thaiText: string) => {
@@ -4463,15 +4785,15 @@ startxref
   return (
     <div className="h-screen h-[100dvh] bg-brand-light text-brand-dark flex flex-col font-sans overflow-hidden">
       
-      {/* Top Header Navigation bar */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/60 shrink-0 sticky top-0 z-50 transition-all">
+      {/* Responsive app header: compact identity/actions on mobile, full navigation on desktop. */}
+      <header className="bg-white/90 backdrop-blur-xl border-b border-gray-200/60 shrink-0 sticky top-0 z-40 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="min-h-16 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="min-h-14 py-2 lg:min-h-16 lg:py-3 flex flex-row lg:items-center justify-between gap-3 lg:gap-4">
             
             {/* Left: Brand Logo & Title + Mobile Actions Row */}
             <div className="flex items-center justify-between w-full lg:w-auto gap-4">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-14 h-14 bg-[#05081c] rounded-2xl flex items-center justify-center shrink-0 select-none relative overflow-hidden group">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 bg-[#05081c] rounded-xl lg:rounded-2xl flex items-center justify-center shrink-0 select-none relative overflow-hidden group">
                   {brandLogoImg ? (
                     <img 
                       src={brandLogoImg} 
@@ -4487,8 +4809,8 @@ startxref
                   <h1 className="text-[12.5px] sm:text-[14px] font-sans font-black text-slate-800 tracking-tight leading-none uppercase select-none">
                     {brandName}
                   </h1>
-                  <p className="text-[8.5px] sm:text-[9.5px] text-brand-purple font-sans font-black tracking-wide mt-1 select-none">
-                    ထိုင်းဘာသာစကားသင်ကြားရေး
+                  <p className="hidden sm:block text-[9.5px] text-brand-purple font-sans font-black tracking-wide mt-1 select-none">
+                    {t('app.tagline')}
                   </p>
                 </div>
               </div>
@@ -4499,39 +4821,29 @@ startxref
                 <button
                   onClick={() => setLanguage(language === 'en' ? 'my' : 'en')}
                   className="h-8 px-2 bg-slate-100 hover:bg-slate-250 border border-slate-200 hover:border-slate-300 rounded-xl transition-all cursor-pointer text-slate-700 flex items-center justify-center gap-1 shadow-3xs"
-                  title="Switch Language • ဘာသာစကား ပြောင်းရန်"
+                  title={t('app.switch_language')}
+                  aria-label={t('app.switch_language')}
                 >
                   <span className="text-[10px]">🌐</span>
                   <span className="font-sans font-black text-[8px] uppercase tracking-wider">
-                    {language === 'en' ? 'EN' : 'MY'}
+                    {language === 'en' ? 'မြန်မာ' : 'EN'}
                   </span>
                 </button>
                 {isLoggedIn ? (
-                  <div className="flex items-center gap-2 bg-slate-100/80 border border-slate-200 p-1.5 pl-3 rounded-2xl shadow-3xs">
-                    <div className="flex flex-col text-right">
-                      <div className="flex items-center gap-1 justify-end">
-                        {isAdmin ? (
-                          <Shield className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 shrink-0 animate-pulse" />
-                        ) : (
-                          <CheckCircle className="w-3.5 h-3.5 text-brand-purple shrink-0" />
-                        )}
-                        <span className="text-[10px] font-sans font-black text-slate-800 truncate max-w-[80px] uppercase tracking-tight">
-                          {currentUser}
-                        </span>
-                      </div>
-                      <span className="text-[8px] font-mono text-brand-purple font-extrabold -mt-0.5 uppercase">
-                        {isAdmin ? 'ADMIN' : `${progress.totalXp} XP`}
-                      </span>
-                    </div>
-                    {/* Sign Out Button */}
-                    <button
-                      onClick={handleSignOut}
-                      className="h-8 px-2.5 bg-white hover:bg-rose-50 hover:text-rose-600 rounded-xl border border-slate-300 transition-colors cursor-pointer text-slate-500 text-[9px] font-sans font-black uppercase leading-none min-h-[32px] flex items-center justify-center shrink-0 shadow-3xs"
-                      title="Sign Out • အကောင့်ထွက်မည်"
-                    >
-                      Out
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTabClick(isAdmin ? 'admin' : 'profile')}
+                    className={`h-9 min-w-9 px-2.5 rounded-xl border flex items-center justify-center gap-1.5 shadow-3xs transition-colors ${
+                      isAdminActive || isProfileActive
+                        ? 'border-brand-purple bg-brand-purple text-white'
+                        : 'border-slate-200 bg-slate-100 text-slate-700 hover:border-violet-200 hover:text-brand-purple'
+                    }`}
+                    aria-label={isAdmin ? 'Open administrator dashboard' : 'Open profile'}
+                    aria-current={isAdminActive || isProfileActive ? 'page' : undefined}
+                  >
+                    {isAdmin ? <Shield className="w-4 h-4 shrink-0" /> : <User className="w-4 h-4 shrink-0" />}
+                    <span className="hidden min-[430px]:inline max-w-20 truncate text-[9px] font-black uppercase">{currentUser}</span>
+                  </button>
                 ) : (
                   <div className="flex items-center gap-1">
                     <button
@@ -4543,86 +4855,111 @@ startxref
                       className="h-9 px-3 bg-brand-purple hover:bg-brand-purple/95 text-white rounded-xl border-b-2 border-brand-purple-shadow flex items-center gap-1.5 font-sans font-black text-[9.5px] transition-transform active:translate-y-0.5 cursor-pointer uppercase tracking-wider select-none shrink-0 shadow-xs min-h-[36px]"
                     >
                       <User className="w-3.5 h-3.5 shrink-0" />
-                      In
+                      {t('auth.sign_in')}
                     </button>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Middle: Integrated 4 Course Selection Tabs (Combined with Header Group) */}
-            <div className="relative w-full lg:w-auto overflow-hidden shrink-0">
-              <div className="flex items-center justify-start lg:justify-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-205 select-none overflow-x-auto scrollbar-none gap-2 w-full lg:w-auto max-w-full flex-nowrap shrink-0 pr-1.5">
-                {getSortedCourses().map((course) => {
-                  const isSelected = selectedCourseTab === course.id && dashboardTab === 'lessons';
-                  let icon = "⭐️";
-                  if (course.id === 'course-basic') icon = "⭐️";
-                  else if (course.id === 'course-business') icon = "💎";
-                  else if (course.id === 'course-workspace') icon = "💼";
-
-                  const displayName = course.id === 'course-basic' ? t('navbar.basic_course') :
-                                      course.id === 'course-business' ? t('navbar.advanced_course') :
-                                      course.id === 'course-workspace' ? "Workplace" :
-                                      course.name;
-
-                  return (
-                    <button
-                      key={course.id}
-                      onClick={() => {
-                        setSelectedCourseTab(course.id);
-                        setDashboardTab('lessons');
-                      }}
-                      className={`px-6 sm:px-5 py-2.5 sm:py-2.5 rounded-xl font-sans font-black text-[11px] sm:text-[11.5px] transition-all uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shrink-0 min-h-[40px] sm:min-h-[38px] ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-brand-purple to-[#7a42c4] text-white shadow-xs border-b-2 border-brand-purple-shadow'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
-                      }`}
-                      title={course.name}
-                    >
-                      <span className="text-[11px] sm:text-[11.5px] leading-none">{icon}</span>
-                      <span>{displayName}</span>
-                      {course.id === 'course-business' && (
-                        <span className="lg:hidden font-sans font-extrabold text-[12px] opacity-90">&gt;</span>
-                      )}
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => {
-                    setSelectedCourseTab('resources');
-                    setDashboardTab('lessons');
-                  }}
-                  className={`px-6 sm:px-5 py-2.5 sm:py-2.5 rounded-xl font-sans font-black text-[11px] sm:text-[11.5px] transition-all uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shrink-0 min-h-[40px] sm:min-h-[38px] ${
-                    selectedCourseTab === 'resources' && dashboardTab === 'lessons'
-                      ? 'bg-gradient-to-r from-brand-purple to-[#7a42c4] text-white shadow-xs border-b-2 border-brand-purple-shadow'
-                      : 'text-slate-600 hover:text-slate-950 hover:bg-white/70'
-                  }`}
-                  title="Syllabus Resources & Document Material PDFs"
-                >
-                  <span className="text-[11px] sm:text-[11.5px] leading-none">📚</span>
-                  <span>Resources</span>
-                </button>
-              </div>
+            {/* Middle: Simplified 4 Pill Navigation Tabs (Strictly BASIC, ADVANCE, RESOURCES, EBOOKS) */}
+            <div className="relative w-full lg:w-auto overflow-hidden shrink-0 hidden lg:flex justify-center">
+              <nav className="flex items-center border border-slate-700/80 rounded-full p-1 bg-white shadow-2xs max-w-full overflow-x-auto scrollbar-none gap-1 shrink-0">
+                {[
+                  {
+                    id: 'basic',
+                    label: t('navbar.basic_course'),
+                    icon: '⭐',
+                    isActive: selectedCourseTab === 'course-basic' && dashboardTab === 'lessons',
+                    onClick: () => {
+                      setSelectedCourseTab('course-basic');
+                      setDashboardTab('lessons');
+                    }
+                  },
+                  {
+                    id: 'advance',
+                    label: t('navbar.advanced_course'),
+                    icon: '💎',
+                    isActive: selectedCourseTab === 'course-business' && dashboardTab === 'lessons',
+                    onClick: () => {
+                      setSelectedCourseTab('course-business');
+                      setDashboardTab('lessons');
+                    }
+                  },
+                  {
+                    id: 'resources',
+                    label: t('navbar.resources'),
+                    icon: '📚',
+                    isActive: selectedCourseTab === 'resources' && dashboardTab === 'lessons',
+                    onClick: () => {
+                      setSelectedCourseTab('resources');
+                      setDashboardTab('lessons');
+                    }
+                  },
+                  {
+                    id: 'ebooks',
+                    label: t('navbar.ebooks'),
+                    icon: '📕',
+                    isActive: dashboardTab === 'handbook',
+                    onClick: () => {
+                      setDashboardTab('handbook');
+                    }
+                  },
+                  {
+                    id: 'notebook',
+                    label: t('navbar.notebook'),
+                    icon: '📝',
+                    isActive: dashboardTab === 'notebook',
+                    onClick: () => {
+                      handleTabClick('notebook');
+                    }
+                  }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={item.onClick}
+                    className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-sans font-black tracking-wide transition-colors shrink-0 cursor-pointer ${
+                      item.isActive
+                        ? 'bg-brand-purple text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <span className="text-xs leading-none">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
             </div>
 
             {/* Right Group: User Profile Controls for Desktop */}
             <div className="hidden lg:flex items-center gap-3 shrink-0 justify-end">
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleTabClick('admin')}
+                  className={`h-10 px-3 rounded-xl border transition-colors flex items-center gap-1.5 text-[9px] font-black uppercase ${isAdminActive ? 'border-amber-500 bg-amber-500 text-white' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                  aria-current={isAdminActive ? 'page' : undefined}
+                >
+                  <Shield className="h-3.5 w-3.5" /> Admin
+                </button>
+              )}
               {/* Language Switcher */}
               <button
                 onClick={() => setLanguage(language === 'en' ? 'my' : 'en')}
                 className="h-10 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl transition-all cursor-pointer text-slate-700 flex items-center gap-1.5 shadow-3xs"
-                title="Switch Language • ဘာသာစကား ပြောင်းရန်"
+                  title={t('app.switch_language')}
+                  aria-label={t('app.switch_language')}
               >
                 <span className="text-sm">🌐</span>
                 <span className="font-sans font-black text-[9.5px] uppercase tracking-wider">
-                  {language === 'en' ? 'EN' : 'MY'}
+                  {language === 'en' ? 'မြန်မာ' : 'EN'}
                 </span>
               </button>
 
               {/* Authentication Controls */}
               {isLoggedIn ? (
                 <div className="flex items-center gap-3.5 bg-slate-50 hover:bg-slate-100/40 border border-slate-200 p-1 pl-3.5 rounded-2xl transition-colors">
-                  <div className="flex flex-col text-right">
+                  <button type="button" onClick={() => handleTabClick('profile')} className="flex flex-col text-right rounded-lg px-1.5 py-1 hover:bg-white focus:outline-none focus:ring-2 focus:ring-brand-purple/20" aria-label="Open profile" aria-current={isProfileActive ? 'page' : undefined}>
                     <div className="flex items-center gap-1 justify-end">
                       {isAdmin ? (
                         <Shield className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 shrink-0" />
@@ -4634,19 +4971,19 @@ startxref
                       </span>
                     </div>
                     <span className="text-[8px] sm:text-[9px] font-mono text-brand-purple font-black uppercase tracking-wider -mt-0.5 leading-none">
-                      {isAdmin ? 'ADMINISTRATOR' : `${progress.totalXp} XP • LEVEL ${Math.floor(progress.totalXp / 1000) + 1}`}
+                      {isAdmin ? t('auth.administrator') : `${progress.totalXp} XP • LEVEL ${Math.floor(progress.totalXp / 1000) + 1}`}
                     </span>
-                  </div>
+                  </button>
                   
                   {/* Sign Out Button */}
                   <button
                     onClick={handleSignOut}
-                    className="p-1 px-3 py-2 bg-white hover:bg-rose-50 hover:text-rose-600 border border-slate-200 hover:border-rose-200 rounded-xl transition-all cursor-pointer text-slate-500 flex items-center gap-1.5 shadow-3xs"
-                    title="Sign Out • အကောင့်ထွက်မည်"
+                    className="p-1 px-3 py-2 bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-3xs"
+                    title={t('auth.sign_out')}
                   >
-                    <LogOut className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                    <span className="font-sans font-black text-[9px] leading-none uppercase tracking-wider">
-                      Out
+                    <LogOut className="w-3.5 h-3.5 shrink-0" />
+                    <span className="font-sans font-black text-[9.5px] leading-none uppercase tracking-wider">
+                      {t('auth.sign_out')}
                     </span>
                   </button>
                 </div>
@@ -4661,7 +4998,7 @@ startxref
                     className="px-4 py-2.5 bg-gradient-to-r from-brand-purple to-[#7a42c4] hover:brightness-105 text-white rounded-xl border-b-4 border-brand-purple-shadow flex items-center gap-1.5 font-sans font-black text-[10px] sm:text-xs transition-transform active:translate-y-0.5 cursor-pointer uppercase tracking-wider select-none shrink-0 shadow-xs"
                   >
                     <User className="w-3.5 h-3.5 shrink-0" />
-                    Sign In • ဝင်ရောက်ရန်
+                    {t('auth.sign_in')}
                   </button>
                 </div>
               )}
@@ -4672,49 +5009,62 @@ startxref
       </header>
 
       {/* Main Container Workspace */}
-      <main className="flex-1 overflow-y-auto max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-[88px] sm:pb-32">
+      <main id="main-content" className={`flex-1 overflow-y-auto max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pb-28 scroll-pb-24 ${activeLessonId !== null ? 'lg:pb-32' : 'lg:pb-8'}`}>
         
         {activeEbookId ? (
-          <TextbookReader bookId={activeEbookId} onClose={() => setActiveEbookId(null)} />
+          <div className="space-y-6">
+            <AudioEbookPlayer ebookId={activeEbookId} onClose={() => setActiveEbookId(null)} />
+            <TextbookReader bookId={activeEbookId} onClose={() => setActiveEbookId(null)} />
+          </div>
         ) : showVocabPage ? (
           <VocabPage onClose={() => setShowVocabPage(false)} />
         ) : !activeLessonId ? (
           <div className="space-y-6 sm:space-y-8">
             {/* Courses Segmented Top Sub-Selector - Only visible under Courses Bottom Tab */}
-            {['orientation', 'handbook', 'alphabet'].includes(dashboardTab) && (
-              <div className="grid grid-cols-3 gap-1.5 bg-white p-1.5 rounded-2xl border-2 border-gray-100 select-none max-w-2xl mx-auto shadow-xs">
+            {['orientation', 'handbook', 'alphabet', 'ebooks'].includes(dashboardTab) && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-white p-1.5 rounded-2xl border-2 border-gray-100 select-none max-w-4xl mx-auto shadow-xs">
                 <button
                   onClick={() => setDashboardTab('orientation')}
-                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider ${
+                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider cursor-pointer ${
                     dashboardTab === 'orientation'
                       ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                       : 'text-brand-muted hover:text-brand-dark hover:bg-gray-50'
                   }`}
                 >
-                  🧭 Orientation<span className="hidden md:inline"> • လမ်းညွှန်ချက်</span>
+                  🧭 {t('navbar.orientation')}
                 </button>
                 <button
                   onClick={() => {
                     setDashboardTab('handbook');
                     setMobileChapterDetailActive(false);
                   }}
-                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider ${
+                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider cursor-pointer ${
                     dashboardTab === 'handbook'
                       ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                       : 'text-brand-muted hover:text-brand-dark hover:bg-gray-50'
                   }`}
                 >
-                  📖 Grammar<span className="hidden md:inline"> Handbook • သဒ္ဒါလက်စွဲ</span><span className="inline md:hidden"> Guide</span>
+                  📖 {t('navbar.grammar_manual')}
                 </button>
                 <button
                   onClick={() => setDashboardTab('alphabet')}
-                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider ${
+                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider cursor-pointer ${
                     dashboardTab === 'alphabet'
                       ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                       : 'text-brand-muted hover:text-brand-dark hover:bg-gray-50'
                   }`}
                 >
-                  🔠 Alphabet<span className="hidden md:inline"> Guide • အက္ခရာများ</span><span className="inline md:hidden"> Guide</span>
+                  🔠 {t('navbar.alphabet_guide')}
+                </button>
+                <button
+                  onClick={() => setDashboardTab('ebooks')}
+                  className={`py-3 px-1.5 text-center rounded-xl font-sans font-black text-[10px] sm:text-xs transition-all uppercase tracking-wider cursor-pointer ${
+                    dashboardTab === 'ebooks'
+                      ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
+                      : 'text-brand-muted hover:text-brand-dark hover:bg-gray-50'
+                  }`}
+                >
+                  🎧 {t('navbar.audio_ebooks')}
                 </button>
               </div>
             )}
@@ -4722,6 +5072,35 @@ startxref
             {/* TAB CONTENT: 1. Lessons pathways */}
             {dashboardTab === 'lessons' && (
               <div className="max-w-4xl mx-auto space-y-6 min-h-[500px]">
+
+                {/* Contextual course switcher replaces the desktop header pills on mobile. */}
+                <div className="grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-slate-100/80 p-1 lg:hidden" aria-label="Choose course content">
+                  {[
+                    { id: 'course-basic', label: t('navbar.basic_course'), icon: '⭐' },
+                    { id: 'course-business', label: t('navbar.advanced_course'), icon: '💎' },
+                    { id: 'resources', label: t('navbar.resources'), icon: '📚' }
+                  ].map((item) => {
+                    const active = selectedCourseTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCourseTab(item.id);
+                          setActiveLessonId(null);
+                          setCurrentPage(1);
+                        }}
+                        className={`flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-[9px] font-black uppercase transition-colors ${
+                          active ? 'bg-brand-purple text-white shadow-sm' : 'bg-white text-slate-600 hover:text-brand-purple'
+                        }`}
+                        aria-pressed={active}
+                      >
+                        <span aria-hidden="true">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
                 {selectedCourseTab !== 'resources' && (() => {
                   const activeCourse = courses.find(c => c.id === selectedCourseTab);
@@ -4739,7 +5118,8 @@ startxref
 
                     return (
                       <>
-                        {/* Course Tab Navigation - Display only if eBook or PDF resources exist */}
+                        {/* Course Tab Navigation Bar - Commented out & hidden as requested */}
+                        {/* 
                         {hasAnyResources && (
                           <div className="bg-white p-2 rounded-2xl border-2 border-gray-100 flex items-center gap-2 select-none shadow-sm mb-6">
                             <button
@@ -4757,29 +5137,41 @@ startxref
                             
                             <button
                               type="button"
-                              onClick={() => setCourseSubTab('resources')}
+                              onClick={() => {
+                                setCourseSubTab('resources');
+                                const samplePdfUrl = activeCourse.resources?.[0]?.downloadUrl || activeCourse.resources?.[0]?.pdfDownloadUrl || 'https://drive.google.com/open?id=demo_blue_book';
+                                window.open(samplePdfUrl, '_blank');
+                              }}
                               className={`flex-1 py-3 px-4 rounded-xl text-xs font-sans font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                 activeSubTab === 'resources'
                                   ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow shadow-sm'
                                   : 'text-brand-muted hover:text-brand-dark hover:bg-slate-50'
                               }`}
+                              title="Click to view course PDFs and open sample document in a new tab"
                             >
                               <FileText className={`w-4 h-4 ${activeSubTab === 'resources' ? 'text-white' : 'text-brand-purple'}`} />
-                              Course eBooks & PDFs ({courseResources.length + (activeCourse.resources?.length || 0)})
+                              Course eBooks & PDFs ({courseResources.length + (activeCourse.resources?.length || 0)}) ↗
                             </button>
                           </div>
                         )}
+                        */}
 
                         {activeSubTab === 'lessons' ? (
                           <div className="space-y-6 animate-fade-in text-left">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border-2 border-gray-100">
                               <div>
-                                <span className="text-[10px] text-brand-purple font-sans font-black uppercase tracking-wider block">Course: {activeCourse.name}</span>
+                                <span className="text-[10px] text-brand-purple font-sans font-black uppercase tracking-wider block">
+                                  {t('courses.course')}: {language === 'my' ? (activeCourse.nameMm || activeCourse.name) : activeCourse.name}
+                                </span>
                                 <h3 className="font-sans font-black text-brand-dark text-base mb-0.5 uppercase tracking-tight mt-0.5">
-                                  Syllabus Lessons • သင်ခန်းစာများ
+                                  {t('courses.syllabus_lessons')}
                                 </h3>
                                 <p className="text-xs text-brand-muted font-sans font-semibold">
-                                  Lessons {(currentPage - 1) * lessonsPerPage + 1} to {Math.min(currentPage * lessonsPerPage, totalLessons)} of {totalLessons}
+                                  {t('courses.lessons_range', {
+                                    from: (currentPage - 1) * lessonsPerPage + 1,
+                                    to: Math.min(currentPage * lessonsPerPage, totalLessons),
+                                    total: totalLessons,
+                                  })}
                                 </p>
                               </div>
 
@@ -4790,7 +5182,7 @@ startxref
                                   className="duo-btn duo-btn-purple text-xs font-black py-2.5 px-4 flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer animate-pulse"
                                   title="Open Course Vocabulary Book"
                                 >
-                                  📙 Vocab Book • ဝေါဟာရ
+                                  📙 {t('courses.vocab_book')}
                                 </button>
 
                                 {/* Compact Pagination Top Control */}
@@ -5125,7 +5517,17 @@ startxref
                                         </div>
                                         
                                         <div className="flex flex-col items-center justify-center pl-2 py-1.5 space-y-1">
-                                          <div className="w-10 h-10 rounded-full bg-white/10 border border-white/15 flex flex-col items-center justify-center animate-pulse">
+                                          <div 
+                                            className="w-10 h-10 rounded-full bg-white/10 border border-white/15 flex flex-col items-center justify-center animate-pulse cursor-pointer"
+                                            onClick={() => {
+                                              openEnrollmentPortal({
+                                                id: item.id,
+                                                title: item.name,
+                                                price: item.price,
+                                                type: "PREMIUM RESOURCE"
+                                              });
+                                            }}
+                                          >
                                             <span className="text-base text-white">{bookStyle.emoji}</span>
                                           </div>
                                           <span className="text-[6.5px] font-bold text-yellow-105 tracking-wider uppercase text-center leading-tight">
@@ -5484,338 +5886,400 @@ startxref
           }
 
           return (
-            <div className="bg-white p-8 rounded-3xl border-2 border-gray-100 text-center space-y-5 max-w-md mx-auto animate-fade-in shadow-xs">
-              <div className="w-16 h-16 bg-amber-50 border-2 border-amber-200/60 text-amber-600 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-3xs">
-                🔒
-              </div>
-              <div>
-                <span className="text-[10px] font-sans font-black text-brand-purple uppercase tracking-wider block mb-1">
-                  Course Group Access
-                </span>
-                <h3 className="font-sans font-black text-brand-dark text-lg uppercase tracking-tight">
-                  {t('lock_screen.title')}
-                </h3>
-                <p className="text-xs text-brand-muted font-semibold leading-relaxed mt-2 font-sans">
-                  {t('lock_screen.subtitle')}
-                </p>
-              </div>
+            <div className="max-w-3xl mx-auto space-y-6 text-left animate-fade-in py-4">
+              <div className="bg-white rounded-3xl p-6 sm:p-10 border-2 border-slate-100 shadow-sm text-center space-y-6 relative overflow-hidden">
+                {/* Decorative Top Accent */}
+                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-brand-purple via-indigo-500 to-purple-600" />
+                
+                {/* Lock Badge & Icon */}
+                <div className="w-20 h-20 rounded-3xl bg-brand-purple/10 border-2 border-brand-purple/20 text-brand-purple flex items-center justify-center text-4xl mx-auto shadow-inner">
+                  💎
+                </div>
 
-              <div className="space-y-2.5 pt-2">
-                {(() => {
-                  const isOwned = isCourseAlreadyPurchased(activeCourse.id, activeCourse.name, 135000);
-                  return (
-                    <button 
+                <div className="space-y-2 max-w-xl mx-auto">
+                  <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-50 text-brand-purple border border-purple-200">
+                    PREMIUM ADVANCED COURSE • အဆင့်မြင့်ထိုင်းစာသင်တန်း
+                  </span>
+                  <h2 className="font-sans font-black text-xl sm:text-2xl text-slate-800 tracking-tight">
+                    {activeCourse.name}
+                  </h2>
+                  {activeCourse.nameMm && (
+                    <p className="text-xs sm:text-sm font-bold text-brand-purple">
+                      {activeCourse.nameMm}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed pt-2">
+                    {activeCourse.description}
+                  </p>
+                  {activeCourse.descriptionMm && (
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed italic">
+                      {activeCourse.descriptionMm}
+                    </p>
+                  )}
+                </div>
+
+                {/* Course Highlights / Features */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 text-left border-t border-slate-100 max-w-xl mx-auto">
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+                    <span className="text-base block">📚</span>
+                    <span className="text-[10px] font-black text-slate-700 uppercase block">10 Full Lessons</span>
+                    <span className="text-[9.5px] text-slate-500 block font-medium">Business dialogues & letters</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+                    <span className="text-base block">🎙️</span>
+                    <span className="text-[10px] font-black text-slate-700 uppercase block">Native Audio Clips</span>
+                    <span className="text-[9.5px] text-slate-500 block font-medium">Clear pronunciation practice</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+                    <span className="text-base block">📜</span>
+                    <span className="text-[10px] font-black text-slate-700 uppercase block">Workplace Templates</span>
+                    <span className="text-[9.5px] text-slate-500 block font-medium">Formal email & phone guides</span>
+                  </div>
+                </div>
+
+                {/* Pricing & Unlock Actions */}
+                <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 max-w-xl mx-auto">
+                  <div className="text-center sm:text-left">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Course Fee Rate</span>
+                    <span className="text-xl font-sans font-black text-brand-purple block">
+                      {activeCourse.priceAmount ? `${activeCourse.priceAmount.toLocaleString()} MMK` : '65,000 MMK'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <button
                       type="button"
-                      disabled={isOwned}
                       onClick={() => {
-                        if (isOwned) return;
-                        handleUnlockCourse(activeCourse.id);
+                        openEnrollmentPortal({
+                          title: activeCourse.name || "Advanced Business Thai Speaking",
+                          price: activeCourse.priceAmount || "35,000",
+                          type: "PREMIUM COURSE"
+                        });
                       }}
-                      className={isOwned
-                        ? "w-full bg-emerald-100 text-emerald-800 border-2 border-emerald-300 text-xs font-black py-3.5 uppercase tracking-wider flex items-center justify-center gap-2 cursor-not-allowed opacity-90 rounded-xl"
-                        : "w-full duo-btn duo-btn-green text-xs font-black py-3.5 uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-98 transition-all"}
-                      id="btn-purchase-unlock-course"
+                      className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-purple to-purple-700 hover:brightness-110 text-white rounded-2xl text-xs font-sans font-black uppercase tracking-wider shadow-md hover:shadow-lg cursor-pointer transition-all transform active:translate-y-0.5 border-b-4 border-purple-900 flex items-center justify-center gap-2"
                     >
-                      {isOwned ? "✅ ဝယ်ယူပြီးပါပြီ" : `🛒 ${t('course_common.buy_now')} (135,000 MMK)`}
+                      <span>🔓 UNLOCK COURSE NOW</span>
                     </button>
-                  );
-                })()}
 
-                <button 
-                  type="button"
-                  onClick={() => {
-                    if (!isLoggedIn) {
-                      setAuthTab('student-signup');
-                      setAuthNotice('To explore and unlock items in our Bookstore, we encourage you to sign up first! Create a free student account now to get started. 🛍️✨');
-                      navigate('/sign-up');
-                    } else {
-                      setSelectedCourseTab('resources');
-                      setDashboardTab('lessons');
-                    }
-                  }}
-                  className="w-full duo-btn duo-btn-white text-xs font-black py-3 uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  🛍️ VIEW STUDENT BOOKSTORE
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openEnrollmentPortal({
+                          title: activeCourse.name || "Advanced Business Thai Speaking",
+                          price: activeCourse.priceAmount || "35,000",
+                          type: "PREMIUM COURSE"
+                        });
+                      }}
+                      className="w-full sm:w-auto px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-2xl text-xs font-sans font-black uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <span>💳 Pay & Enroll</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           );
         })()}
 
         {selectedCourseTab === 'resources' && (() => {
-          // Restored unified student resources and eBook library tab design and content!
+          const resourceItems: any[] = resourceCatalog.length > 0 ? [...resourceCatalog] : [{
+            id: 'basic-thai-book-pdf',
+            name: 'Basic Thai Book PDF',
+            nameMm: 'နေ့စဉ်သုံး အထူးထိုင်းစကားပြော စာအုပ်',
+            description: 'A free foundational Thai speaking book for everyday conversation practice.',
+            descriptionMm: 'နေ့စဉ်သုံး ထိုင်းစကားပြောနှင့် အခြေခံဝေါဟာရများကို လေ့လာရန် အခမဲ့ PDF စာအုပ်။',
+            priceAmount: 0,
+            currency: 'MMK',
+            isFree: true,
+            courseName: 'Complete Thai Foundational Mastery Course',
+            openUrl: 'https://drive.google.com/file/d/1GDVMsaqLRFoIIPMhOK09mbvBfPhd-i_c/view?usp=sharing',
+            downloadUrl: 'https://drive.google.com/uc?export=download&id=1GDVMsaqLRFoIIPMhOK09mbvBfPhd-i_c'
+          }];
+
+          // Include extra store items or resources if available
+          storeItems.forEach(item => {
+            if (!resourceItems.some(r => r.id === item.id)) {
+              const linkedCourse = courses.find(c => c.id === item.courseId);
+              resourceItems.push({
+                id: item.id,
+                name: item.name,
+                nameMm: item.nameMm,
+                description: item.description || `Study worksheets and practice guidelines specifically designed for ${linkedCourse ? linkedCourse.name : 'the Complete Thai Foundational Mastery Course'}.`,
+                priceAmount: item.price || 0,
+                currency: item.currency || 'MMK',
+                isFree: (item.price || 0) === 0,
+                courseName: linkedCourse ? linkedCourse.name : 'Complete Thai Foundational Mastery Course',
+                pdfDownloadUrl: item.pdfDownloadUrl,
+                vocabEntries: item.vocabEntries,
+                sentenceEntries: item.sentenceEntries,
+                dialogueEntries: item.dialogueEntries,
+                conversationEntries: item.conversationEntries,
+                rawItem: item
+              } as any);
+            }
+          });
+
           return (
-            <div className="space-y-8 animate-fade-in text-left">
-              {/* Resources Page Header */}
-              <div className="bg-white p-6 sm:p-8 rounded-3xl border-2 border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 shadow-sm">
-                <div className="space-y-1.5 text-left">
-                  <span className="text-[10px] text-brand-purple font-sans font-black uppercase tracking-wider block">Unified Library Hub</span>
-                  <h3 className="font-sans font-black text-brand-dark text-xl uppercase tracking-tight flex items-center gap-2">
-                    📚 Student Resources & eBooks Store • စာအုပ်များနှင့် PDFs
-                  </h3>
-                  <p className="text-xs text-brand-muted font-sans font-semibold leading-relaxed">
-                    Access our full catalog of premium textbooks, companion lesson workbooks, handbooks, and reference sheets across all levels in one single dashboard.
-                  </p>
-                </div>
+            <div className="space-y-6 animate-fade-in text-left max-w-4xl mx-auto">
+              {/* Header Banner */}
+              <div className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-2xs space-y-2 text-left">
+                <span className="text-[10px] text-brand-purple font-sans font-black uppercase tracking-wider block">
+                  SYLLABUS MATERIALS
+                </span>
+                <h2 className="text-xl sm:text-2xl font-sans font-black text-slate-800 tracking-tight flex items-center gap-2">
+                  📚 ENROLLED COURSE COMPANION RESOURCES • စာရွက်စာတမ်းများ
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 font-sans font-medium leading-relaxed">
+                  Access your official lesson worksheets, writing workbooks, exam reference templates, and homework sheets for basic and advanced courses.
+                </p>
               </div>
 
-              {/* Course specific companion groups */}
-              {Array.isArray(courses) ? courses.map((course) => {
-                const courseResources = storeItems.filter(item => item.courseId === course.id);
-                const hasDirectResources = course.resources && course.resources.length > 0;
-                const hasStoreResources = courseResources.length > 0;
-                const hasAny = hasDirectResources || hasStoreResources;
-
-                // Only render courses that have eBook resources
-                if (!hasAny) return null;
-
-                return (
-                  <div key={course.id} className="space-y-4">
-                    <h4 className="font-sans font-black text-xs text-brand-dark uppercase tracking-wider flex items-center gap-2 border-b-2 border-slate-100 pb-2.5 text-left">
-                      <span className="p-1.5 rounded-lg bg-indigo-50 text-brand-purple text-xs">🎓</span>
-                      <span>{course.name} Companion Materials</span>
-                      <span className="text-[8px] bg-brand-purple/10 text-brand-purple px-2 py-0.5 rounded font-black tracking-normal uppercase">
-                        Enrolled Guides
-                      </span>
-                    </h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Direct resource list */}
-                      {course.resources?.map((res: any) => {
-                        const isFree = res.priceAmount === 0;
-                        const itemOwned = isStoreItemUnlocked(res.id, res.priceAmount);
-                        return (
-                          <CourseResourceCard
-                            key={res.id}
-                            res={res}
-                            courseName={course.name}
-                            isFree={isFree}
-                            itemOwned={itemOwned}
-                            onStudyInteractive={handleStudyInteractive}
-                            onDownload={handleDownloadResource}
-                            onPurchase={(r) => handlePurchaseResource(r, course.name, course.instructor)}
-                          />
-                        );
-                      })}
-
-                      {/* Course linked bookstore store items list */}
-                      {courseResources.map((item) => {
-                        const itemOwned = isStoreItemUnlocked(item.id, item.price);
-                        const isFree = item.price === 0;
-                        return (
-                          <div
-                            key={item.id}
-                            className="duo-card p-6 bg-white border-2 border-slate-100 flex flex-col justify-between hover:shadow-md transition-all duration-200 animate-fade-in relative overflow-hidden text-left"
-                          >
-                            <div className="space-y-4">
-                              <div className="flex items-center justify-between">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border select-none ${
-                                  isFree
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                    : 'bg-brand-purple/10 text-[#583092] border-brand-purple/20'
-                                }`}>
-                                  {isFree ? 'FREE PDF DOWNLOAD' : 'PREMIUM STUDY BOOK'}
-                                </span>
-                                <FileText className={`w-4 h-4 ${isFree ? 'text-emerald-600' : 'text-brand-purple'}`} />
-                              </div>
-                              <div>
-                                <h4 className="font-sans font-black text-sm text-[#3c3c3c] leading-snug">
-                                  {item.name}
-                                </h4>
-                                <p className="text-[10px] sm:text-[11px] font-sans font-bold text-brand-purple mt-0.5">
-                                  {item.nameMm}
-                                </p>
-                                <p className="text-[11px] text-brand-muted font-sans font-medium mt-2 leading-relaxed">
-                                  {item.description}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-3 pt-4 mt-5 border-t border-slate-100 -mx-5 -mb-5 p-4 bg-[#fafafc] rounded-b-2xl">
-                              <div className="text-left font-sans select-none">
-                                <span className="text-[7.5px] text-brand-muted block font-extrabold uppercase leading-none">Price Tag</span>
-                                <span className="text-xs sm:text-sm font-black text-brand-purple block mt-0.5">
-                                  {isFree ? 'FREE' : `${item.price.toLocaleString()} ${item.currency}`}
-                                </span>
-                              </div>
-
-                              {itemOwned ? (
-                                <button
-                                  onClick={() => {
-                                    if (item.pdfDownloadUrl) {
-                                      window.open(item.pdfDownloadUrl, '_blank');
-                                      addSystemLog(currentUser || 'student', `Opened dynamic download link for eBook: "${item.name}"`);
-                                    } else {
-                                      triggerPdfDownload(
-                                        item.pdfFileName || `${item.id}.pdf`,
-                                        item.name,
-                                        item.description,
-                                        [
-                                          { thai: "สวัสดี ครับ/ค่ะ", pronunciation: "sawàtdii khráp/khâ", myanmar: "မင်္ဂလာပါ (ကျား/မ)" },
-                                          { thai: "ขอบคุณ ครับ/ค่ะ", pronunciation: "khɔ̀ɔp-khun khráp/khâ", myanmar: "ကျေးဇူးတင်ပါတယ်" }
-                                        ]
-                                      );
-                                      addSystemLog(currentUser || 'student', `Completed dynamic auto-generation download: "${item.name}"`);
-                                    }
-                                  }}
-                                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-750 text-white rounded-xl text-[10px] sm:text-xs font-sans font-black uppercase tracking-wider hover:shadow-md cursor-pointer transition-all transform active:translate-y-0.5 border-b-4 border-emerald-805 flex items-center gap-1.5 shrink-0"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                  📥 Download Free Guide
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    const bookProduct = {
-                                      id: item.id,
-                                      name: item.name,
-                                      nameMm: item.nameMm,
-                                      priceAmount: item.price,
-                                      currency: item.currency || 'MMK',
-                                      itemType: 'e-book',
-                                      duration: "Lifetime Study Access License",
-                                      description: item.description,
-                                      descriptionMm: item.descriptionMm,
-                                      instructor: "Kru Jane & Sayar Thura",
-                                      includes: ["Full Dynamic PDF eBook Download", "Offline Reading Support", "Grammar Revision Sheets", "Burmese Pronunciation Guide"]
-                                    };
-                                    setGatewayCourse(bookProduct as any);
-                                    setGatewayPhone(progress.masteredWords.length > 0 ? "09-791112233" : "09-");
-                                    setGatewayEmail(currentUser ? `${currentUser.toLowerCase()}@classroom.edu` : "student@classroom.edu");
-                                    setGatewayStep(1);
-                                    setGatewayPaymentMethod('kbzpay');
-                                    setGatewayOtp('');
-                                    setGatewayTimer(180);
-                                    setIsGatewayOpen(true);
-                                  }}
-                                  className="px-4 py-2 bg-gradient-to-r from-brand-purple to-brand-purple/95 text-white rounded-xl text-[10px] sm:text-xs font-sans font-black uppercase tracking-wider hover:shadow-md cursor-pointer transition-all transform active:translate-y-0.5 border-b-4 border-brand-purple-shadow flex items-center gap-1 shrink-0"
-                                >
-                                  🔒 Unlock eBook
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              }) : null}
-
-              {/* General Reference PDF library section */}
-              <div className="space-y-4 pt-4 text-left">
-                <h4 className="font-sans font-black text-xs text-brand-dark uppercase tracking-wider flex items-center gap-2 border-b-2 border-slate-100 pb-2.5">
-                  <span className="p-1.5 rounded-lg bg-indigo-50 text-brand-purple text-xs">📖</span>
-                  <span>General Study E-Books & Reference Library</span>
-                  <span className="text-[8px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-black tracking-normal uppercase">
-                    Library Catalog
+              {/* Section Title */}
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base sm:text-lg">🎓</span>
+                  <h4 className="font-sans font-black text-xs sm:text-sm text-slate-800 uppercase tracking-wider">
+                    COMPLETE THAI FOUNDATIONAL MASTERY COURSE COMPANION MATERIALS
+                  </h4>
+                  <span className="text-[9px] bg-purple-100 text-purple-700 font-black px-2 py-0.5 rounded tracking-normal uppercase border border-purple-200 select-none">
+                    ENROLLED GUIDES
                   </span>
-                </h4>
+                </div>
 
+                {/* Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {storeItems.filter(item => !item.courseId).map((item) => {
-                    const itemOwned = isStoreItemUnlocked(item.id, item.price);
-                    const isFree = item.price === 0;
+                  {resourceItems.map((res) => {
+                    const isFree = res.isFree ?? Number(res.priceAmount || 0) === 0;
+                    const itemOwned = isFree || isStoreItemUnlocked(res.id, res.priceAmount);
+                    const courseName = res.courseName || "Complete Thai Foundational Mastery Course";
 
-                    const getBookStyles = (id: string, nameStr: string) => {
-                      if (id === 'free-writing') {
-                        return {
-                          gradient: "from-purple-700 via-indigo-850 to-indigo-950",
-                          borderLeft: "border-purple-900",
-                          accentText: "text-purple-250",
-                          titleColor: "text-yellow-405",
-                          topLabel: "ALPHABET SHEETS",
-                          titleText: "LETTER WRITING",
-                          subText: "PRACTICE EXERCISES",
-                          emoji: "✍️",
-                          emojiLabel: "STROKE GUIDELINES",
-                          author: "STUDY WORKSHEET",
-                          status: "FREE PRACTICE BOOK"
-                        };
-                      }
-                      if (id === 'sayar-son-jai-blue-book') {
-                        return {
-                          gradient: "from-blue-600 via-[#1c3a70] to-[#0b1b3a]",
-                          borderLeft: "border-brand-purple-shadow",
-                          accentText: "text-blue-150",
-                          titleColor: "text-yellow-250",
-                          topLabel: "BASIC THAI GUIDE",
-                          titleText: "BLUE BOOK",
-                          subText: "SAYAR SON JAI",
-                          emoji: "📘",
-                          emojiLabel: "AUDIO INSIDE",
-                          author: "BESTSELLER textbook",
-                          status: "PREMIUM AUDIO BOOK"
-                        };
-                      }
-
-                      const rawWords = nameStr.toUpperCase().replace(/[^A-Z0-9 ]/g, '').split(' ').filter(Boolean);
-                      const word1 = rawWords[0] || "THAI";
-                      const word2 = rawWords.slice(1, 3).join(' ') || "STUDY MANUAL";
-                      return {
-                        gradient: "from-violet-700 via-brand-purple to-indigo-950",
-                        borderLeft: "border-purple-900",
-                        accentText: "text-purple-200",
-                        titleColor: "text-yellow-250",
-                        topLabel: "LIBRARY CATALOG",
-                        titleText: word1.substring(0, 15),
-                        subText: word2.substring(0, 20),
-                        emoji: "📘",
-                        emojiLabel: "EBOOK REFERENCE",
-                        author: "ONLINE RESOURCE",
-                        status: "PREMIUM STUDY"
-                      };
-                    };
-
-                    const bookStyle = getBookStyles(item.id, item.name);
-
-                    if (item.id === 'sayar-son-jai-blue-book' || item.id === 'free-writing' || item.id === 'premium-book' || item.id === 'free-phrases') {
-                      return (
-                        <EbookCard
-                          key={item.id}
-                          item={item}
-                          currentUser={currentUser}
-                          onUnlock={(unlockedItem) => {
-                            const bookProduct = {
-                              id: unlockedItem.id,
-                              name: unlockedItem.name,
-                              nameMm: unlockedItem.nameMm,
-                              priceAmount: unlockedItem.price,
-                              currency: unlockedItem.currency || 'MMK',
-                              itemType: 'e-book',
-                              duration: "Lifetime Study Access License",
-                              description: unlockedItem.description,
-                              descriptionMm: unlockedItem.descriptionMm,
-                              instructor: "Kru Jane & Sayar Thura",
-                              includes: ["Full Interactive Audiobook Access", "Complete textbook material", "Thai Accent Pronunciation Tracks", "Burmese Translation Guides"]
-                            };
-                            setGatewayCourse(bookProduct as any);
-                            setGatewayPhone(progress.masteredWords.length > 0 ? "09-791112233" : "09-");
-                            setGatewayEmail(currentUser ? `${currentUser.toLowerCase()}@classroom.edu` : "student@classroom.edu");
-                            setGatewayStep(1);
-                            setGatewayPaymentMethod('kbzpay');
-                            setGatewayOtp('');
-                            setGatewayTimer(180);
-                            setIsGatewayOpen(true);
-                          }}
-                          onEnterBook={(enteredItem) => {
-                            setActiveEbookId(enteredItem.id);
+                    return (
+                      <CourseResourceCard
+                        key={res.id}
+                        res={res}
+                        courseName={courseName}
+                        isFree={isFree}
+                        itemOwned={itemOwned}
+                        onStudyInteractive={(resource) => {
+                          if (resource.rawItem) {
+                            setActiveReadingResource(resource.rawItem);
+                          } else {
+                            setActiveEbookId(resource.id);
                             setActiveEbookLessonId(1);
-                            window.speechSynthesis?.cancel();
-                            addSystemLog(currentUser || 'student', `Opened dynamic textbook reader: "${enteredItem.name}"`);
-                          }}
-                        />
-                      );
-                    }
-                    return null;
+                          }
+                        }}
+                        onDownload={(resource) => {
+                          if (openResourceInNewTab(resource)) {
+                            addSystemLog(currentUser || 'student', `Opened download for resource: "${resource.name}"`);
+                          } else {
+                            alert('This resource does not have a valid PDF link yet.');
+                          }
+                        }}
+                        onPurchase={(resource) => {
+                          const checkoutProduct = {
+                            id: resource.id,
+                            name: resource.name,
+                            nameMm: resource.nameMm || '',
+                            priceAmount: resource.priceAmount,
+                            currency: resource.currency || 'MMK',
+                            itemType: 'e-book' as const,
+                            duration: "Course Companion Resource License",
+                            description: resource.description,
+                            descriptionMm: resource.nameMm || '',
+                            instructor: "Kru Jane & Sayar Thura",
+                            includes: ["Direct PDF Download Link", "Practice Worksheets", "Vocabulary sheets"]
+                          };
+                          setGatewayCourse(checkoutProduct as any);
+                          setGatewayPhone(progress.masteredWords.length > 0 ? "09-791112233" : "09-");
+                          setGatewayEmail(currentUser ? `${currentUser.toLowerCase()}@classroom.edu` : "student@classroom.edu");
+                          setGatewayStep(1);
+                          setGatewayPaymentMethod('kbzpay');
+                          setGatewayOtp('');
+                          setGatewayTimer(180);
+                          setIsGatewayOpen(true);
+                        }}
+                      />
+                    );
                   })}
-                  </div>
                 </div>
               </div>
-            );
-          })()}
-        </div>
-      )}
+            </div>
+          );
+        })()}
+      </div>
+    )}
+
+    {/* EBOOKS VIEW (Triggered by EBOOKS top navigation tab or handbook mode) */}
+        {dashboardTab === 'handbook' && (() => {
+          const ebooks = [
+            {
+              id: 1,
+              storeId: 'sayar-son-jai-blue-book',
+              coverTheme: 'from-blue-600 to-blue-900',
+              coverTopText: 'BASIC THAI GUIDE',
+              coverTitle: 'BLUE BOOK',
+              coverSub: 'SAYAR SON JAI',
+              coverCenterIcon: '📘',
+              coverCenterLabel: 'AUDIO INSIDE',
+              coverBottom1: 'BESTSELLER TEXTBOOK',
+              coverBottom2: 'PREMIUM AUDIO BOOK',
+              badgeText: 'PREMIUM STUDY BOOK',
+              badgeColor: 'text-blue-600 bg-blue-50 border-blue-200',
+              title: 'Sayar Son Jai Basic Thai Blue Book (Audio eBook)',
+              titleMm: 'ဆရာဆွန်ဂျိုင်း စိတ်ကြိုက် အခြေခံထိုင်းစာအုပ် (အသံဖိုင်ပါဝင်သည်)',
+              descEn: 'Contains 40 plain-text textbook lessons with audio files. Study Myanmar to Thai translation tables with Myanmar phonetic guidelines.',
+              descMm: 'သင်ခန်းစာ ၄၀ ပါဝင်သော အခြေခံထိုင်းစာအုပ်ဖြစ်ပြီး အသံဖိုင်များလည်း ပါရှိသည်။ မြန်မာဘာသာပြန်နှင့် ဖတ်ရလွယ်ကူသော အသံထွက်လမ်းညွှန်ချက်များ ပါရှိသည်။',
+              price: '25,000 MMK',
+              priceAmount: 25000,
+              isFree: false
+            },
+            {
+              id: 2,
+              storeId: 'free-phrases',
+              coverTheme: 'from-emerald-600 to-emerald-900',
+              coverTopText: 'PHRASES GUIDE',
+              coverTitle: '100 THAI WORDS',
+              coverSub: 'DAILY SPEAKING',
+              coverCenterIcon: '💬',
+              coverCenterLabel: 'POCKET ESSENTIALS',
+              coverBottom1: 'KRU JANE MANUAL',
+              coverBottom2: 'FREE PHRASES BOOK',
+              badgeText: 'FREE PDF DOWNLOAD',
+              badgeColor: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+              title: '100 Daily Essential Thai Phrases Guide',
+              titleMm: 'နေ့စဉ်သုံး အထူးထိုင်းစကားပြော စာအုပ်',
+              descEn: 'Contains vital expressions for daily commute, polite particles, asking directions, ordering meals, and instant street conversation guides.',
+              descMm: 'နေ့စဉ်သုံး အထူးထိုင်းစကားပြော စာအုပ် - ခရီးသွားလာခြင်း၊ လမ်းမေးခြင်း၊ အစားအသောက်မှာယူခြင်းတို့အတွက် အထူးလေ့ကျင့်ပါ။',
+              price: 'FREE',
+              priceAmount: 0,
+              isFree: true
+            }
+          ];
+
+          return (
+            <div className="space-y-6 animate-fade-in text-left">
+              {/* 1. Header Section */}
+              <div className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-sm space-y-2 text-left">
+                <h2 className="text-xl sm:text-2xl font-sans font-black text-slate-800 tracking-tight flex items-center gap-2">
+                  📕 PREMIUM THAI-MYANMAR AUDIO EBOOKS • အသံဖိုင်ပါစာအုပ်များ
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 font-sans font-medium leading-relaxed">
+                  Study with our interactive companion audio textbook guides, trace writing, and reference books featuring full native Thai sound clips.
+                </p>
+              </div>
+
+              {/* 2. Section Title */}
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base sm:text-lg">📖</span>
+                  <h4 className="font-sans font-black text-xs sm:text-sm text-slate-800 uppercase tracking-wider">
+                    GENERAL STUDY E-BOOKS & REFERENCE LIBRARY
+                  </h4>
+                  <span className="text-[9px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded font-black tracking-normal uppercase border border-slate-200 select-none">
+                    LIBRARY CATALOG
+                  </span>
+                </div>
+
+                {/* 3. The Books Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {ebooks.map((book) => (
+                    <div
+                      key={book.id}
+                      className="flex flex-col sm:flex-row bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 gap-5 sm:gap-6 hover:shadow-md transition-all text-left relative overflow-hidden"
+                    >
+                      {/* Left Side (Book Cover Graphics) */}
+                      <div className={`w-[130px] sm:w-[140px] aspect-[1/1.414] bg-gradient-to-b ${book.coverTheme} rounded-xl shadow-md p-3.5 text-white flex flex-col justify-between shrink-0 select-none relative overflow-hidden border-l-4 border-black/30 text-center mx-auto sm:mx-0`}>
+                        <div className="space-y-1">
+                          <span className="block text-[7px] font-black tracking-widest text-white/80 uppercase leading-none">
+                            {book.coverTopText}
+                          </span>
+                          <div className="h-[1.5px] bg-yellow-400 w-1/2 mx-auto mt-1 rounded" />
+                          <h4 className="font-sans font-black text-[11px] leading-tight text-yellow-300 drop-shadow mt-1">
+                            {book.coverTitle}
+                          </h4>
+                          <p className="text-[7.5px] tracking-wide font-sans font-black text-white/90 uppercase leading-tight">
+                            {book.coverSub}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col items-center justify-center space-y-1 py-1">
+                          <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex flex-col items-center justify-center">
+                            <span className="text-xs text-white">{book.coverCenterIcon}</span>
+                          </div>
+                          <span className="text-[6.5px] font-bold text-yellow-200 tracking-wider uppercase text-center leading-tight">
+                            {book.coverCenterLabel}
+                          </span>
+                        </div>
+
+                        <div className="space-y-0.5 text-center">
+                          <div className="h-[1px] bg-white/20 w-3/4 mx-auto rounded" />
+                          <p className="text-[7.5px] font-bold text-white/95 uppercase">
+                            {book.coverBottom1}
+                          </p>
+                          <p className="text-[6.5px] text-yellow-400 font-extrabold tracking-wider uppercase leading-none">
+                            {book.coverBottom2}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right Side (Book Details) */}
+                      <div className="flex-1 flex flex-col justify-between font-sans text-left space-y-3">
+                        <div className="space-y-2">
+                          <div>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider border select-none inline-block ${book.badgeColor}`}>
+                              {book.badgeText}
+                            </span>
+                          </div>
+                          <h3 className="font-sans font-black text-sm sm:text-base text-slate-800 leading-snug">
+                            {book.title}
+                          </h3>
+                          <p className="text-xs font-black text-brand-purple mt-0.5">
+                            {book.titleMm}
+                          </p>
+                          <div className="text-xs text-slate-500 space-y-1 mt-2 leading-relaxed">
+                            <p className="font-medium">{book.descEn}</p>
+                            <p className="text-[11px] text-slate-400 italic">{book.descMm}</p>
+                          </div>
+                        </div>
+
+                        {/* Footer (Price Tag & ENTER BOOK button) */}
+                        <div className="flex items-end justify-between gap-3 pt-3 mt-4 border-t border-gray-100">
+                          <div className="select-none">
+                            <span className="text-[7.5px] text-slate-400 block font-black uppercase leading-none">PRICE TAG</span>
+                            <span className={`text-xs sm:text-sm font-sans font-black block mt-0.5 ${book.isFree ? 'text-emerald-600' : 'text-brand-purple'}`}>
+                              {book.price}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              if (book.isFree || isStoreItemUnlocked(book.storeId, book.priceAmount || 25000)) {
+                                setActiveEbookId(book.storeId);
+                                setActiveEbookLessonId(1);
+                                window.speechSynthesis?.cancel();
+                                addSystemLog(currentUser || 'student', `Opened dynamic textbook reader: "${book.title}"`);
+                              } else {
+                                openEnrollmentPortal({
+                                  id: book.storeId,
+                                  title: book.title,
+                                  price: book.price,
+                                  type: "PREMIUM RESOURCE"
+                                });
+                              }
+                            }}
+                            className="px-4 py-2 bg-gradient-to-r from-brand-purple to-[#7a42c4] hover:brightness-105 text-white rounded-xl text-xs font-sans font-black uppercase tracking-wider hover:shadow-md cursor-pointer transition-all active:scale-95 border-b-4 border-brand-purple-shadow flex items-center gap-1.5 shrink-0 shadow-xs"
+                          >
+                            {book.isFree || isStoreItemUnlocked(book.storeId, book.priceAmount || 25000) ? "📖 ENTER BOOK" : "🔒 UNLOCK EBOOK"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
             {/* TAB CONTENT: Orientation & Pronunciation Guide */}
             {dashboardTab === 'orientation' && (
@@ -5946,158 +6410,144 @@ startxref
 
             {/* TAB CONTENT: 2. Grammar Handbook */}
             {dashboardTab === 'handbook' && (
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8 min-h-[500px]">
-                
-                {/* Left Chapters list sidebar (responsive layout) */}
-                <div className={`space-y-4 lg:col-span-1 ${mobileChapterDetailActive ? 'hidden lg:block' : 'block'}`}>
-                  <div className="mb-4">
-                    <h3 className="font-sans font-black text-brand-dark text-sm uppercase tracking-wider">
-                      Grammar Index • သဒ္ဒါမာတိကာ
-                    </h3>
+              <div className="max-w-7xl mx-auto space-y-6 min-h-[500px]">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+                  {/* Left Column: Grammar Index Sidebar */}
+                  <div className="lg:col-span-1 duo-card p-5 bg-white space-y-4 shadow-xs border-2 border-gray-100 rounded-3xl">
+                    <div className="border-b border-gray-100 pb-3">
+                      <h3 className="font-sans font-black text-brand-dark text-xs sm:text-sm uppercase tracking-wider">
+                        GRAMMAR INDEX • သဒ္ဒါမာတိကာ
+                      </h3>
+                    </div>
+
+                    <div className="space-y-2 max-h-[650px] overflow-y-auto pr-1">
+                      {(grammarChapters || []).map((ch, idx) => {
+                        const cNum = Number(ch?.id ?? ch?.chapter_number ?? ch?.chapterNumber ?? (idx + 1));
+                        const totalChapters = (grammarChapters || []).length || 19;
+                        const rawTitle = ch?.titleEnglish || ch?.title_english || ch?.title || `Lesson ${cNum}`;
+                        const cleanTitle = rawTitle.replace(/^Lesson\s+\d+(\s+of\s+\d+)?:\s*/i, '');
+                        const displayTitle = `Lesson ${cNum} of ${totalChapters}: ${cleanTitle}`;
+                        const isSelected = activeChapterId === cNum || Number(activeChapterId) === cNum;
+
+                        return (
+                          <button
+                            key={cNum}
+                            onClick={() => {
+                              setActiveChapterId(cNum);
+                              setActiveHandbookSubTab('vocab');
+                              setExpandedGrammarSection(null);
+                              setExpandedChapterRuleIndex(0);
+                              setHandbookSubPageIndex(0);
+                            }}
+                            className={`w-full text-left p-3.5 rounded-2xl transition-all border-2 text-xs flex items-center justify-between cursor-pointer select-none ${
+                              isSelected
+                                ? 'bg-brand-purple text-white border-brand-purple border-b-4 border-brand-purple-shadow shadow-xs'
+                                : 'bg-white hover:bg-gray-50 text-brand-dark border-gray-200 border-b-4'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <BookOpen className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-brand-purple'}`} />
+                              <span className="font-sans font-black text-sm tracking-tight leading-snug truncate">
+                                {displayTitle}
+                              </span>
+                            </div>
+                            <ChevronRight className={`w-4 h-4 shrink-0 ml-1.5 ${isSelected ? 'text-white' : 'text-gray-400'}`} />
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
-                    {(grammarChapters || []).map((ch, index) => {
-                      const chNumDisplay = Number(ch?.id ?? ch?.chapter_number ?? ch?.chapterNumber ?? (index + 1));
-                      const normalizedActiveId = Number(activeChapterId ?? 1);
-                      const isActive = chNumDisplay === normalizedActiveId;
-                      const chTitle = ch?.titleEnglish || ch?.title_english || ch?.title || ch?.titleMyanmar || ch?.title_myanmar || `Chapter ${chNumDisplay}`;
+                  {/* Right Column: Active Content */}
+                  <div className="lg:col-span-3 space-y-6">
+                    {(() => {
+                      const normalizedActiveId = Number(activeChapterId ?? 1) || 1;
+                      const chapter = (grammarChapters || []).find(c => {
+                        const cNum = Number(c?.id ?? c?.chapter_number ?? c?.chapterNumber ?? 0);
+                        return cNum === normalizedActiveId;
+                      }) || (grammarChapters || [])[0] || {};
                       const totalChapters = (grammarChapters || []).length || 19;
+                      const rawChapterTitle = chapter?.titleEnglish || chapter?.title_english || chapter?.title || `Chapter ${normalizedActiveId}`;
+                      const cleanChapterTitle = rawChapterTitle.replace(/^Lesson\s+\d+(\s+of\s+\d+)?:\s*/i, '');
+                      const chapterNumDisplay = Number(chapter?.id ?? chapter?.chapter_number ?? chapter?.chapterNumber ?? normalizedActiveId);
+                      const chapterSubtitle = chapter?.titleMyanmar || chapter?.title_myanmar || '';
 
                       return (
-                        <button
-                          key={chNumDisplay}
-                          onClick={() => {
-                            setActiveChapterId(chNumDisplay);
-                            setActiveHandbookSubTab('vocab');
-                            setExpandedGrammarSection(null);
-                            setExpandedChapterRuleIndex(0);
-                            setHandbookSubPageIndex(0);
-                            setMobileChapterDetailActive(true);
-                          }}
-                          className={`w-full text-left p-4 rounded-2xl border-2 flex items-center gap-3.5 transition-all text-xs outline-none ${
-                            isActive
-                              ? 'bg-brand-purple text-white border-brand-purple border-b-4 border-brand-purple-shadow'
-                              : 'bg-white hover:bg-gray-50 text-brand-dark border-gray-150 border-b-4'
-                          }`}
-                        >
-                          <BookOpen className={`w-5 h-5 mr-3 shrink-0 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />
-                          <div className="min-w-0 flex-1">
-                            <div className={`font-sans font-black leading-tight text-sm ${isActive ? 'text-white' : 'text-[#3c3c3c]'}`}>
-                              Lesson {chNumDisplay} of {totalChapters}: {chTitle}
+                        <div className="space-y-6">
+                          {/* Active Chapter Welcome Card */}
+                          <div className="duo-card p-6 md:p-8 bg-white border-2 border-gray-100 flex items-start gap-4">
+                            <div className="w-12 h-12 bg-brand-purple-light text-brand-purple rounded-2xl flex items-center justify-center shrink-0 border border-brand-purple/20 shadow-xs font-sans font-black text-sm select-none">
+                              {chapterNumDisplay}
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-sans text-brand-purple bg-brand-purple-light px-3 py-1 rounded-full font-extrabold border border-brand-purple/20 select-none uppercase tracking-wider">
+                                ACTIVE HANDBOOK CHAPTER
+                              </span>
+                              <h2 className="text-xl md:text-2xl font-sans font-black text-brand-dark tracking-tight mt-2">
+                                Lesson {chapterNumDisplay} of {totalChapters}: {cleanChapterTitle}
+                              </h2>
+                              {chapterSubtitle && (
+                                <p className="text-base text-brand-muted font-sans font-bold mt-2 leading-relaxed">
+                                  {chapterSubtitle}
+                                </p>
+                              )}
                             </div>
                           </div>
-                          <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'translate-x-0.5 text-white' : 'text-gray-300'}`} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                {/* Right Area active chapter details deck */}
-                <div className={`lg:col-span-3 space-y-6 ${mobileChapterDetailActive ? 'block' : 'hidden lg:block'}`}>
-                  {(() => {
-                    if (activeChapterId === null) {
-                      return null;
-                    }
-                    const normalizedActiveId = Number(activeChapterId ?? 1);
-                    const chapter = (grammarChapters || []).find(c => {
-                      const cNum = Number(c?.id ?? c?.chapter_number ?? c?.chapterNumber ?? 0);
-                      return cNum === normalizedActiveId;
-                    }) || (grammarChapters || [])[0] || {};
-                    const totalChapters = (grammarChapters || []).length || 19;
-                    const chapterTitle = chapter?.titleEnglish || chapter?.title_english || chapter?.title || chapter?.titleMyanmar || chapter?.title_myanmar || `Chapter ${normalizedActiveId}`;
-                    const chapterNumDisplay = Number(chapter?.id ?? chapter?.chapter_number ?? chapter?.chapterNumber ?? normalizedActiveId);
+                          {/* 4 Subtabs Selector Grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3 rounded-3xl border-2 border-gray-100 shadow-xs mb-6 select-none">
+                            {(['vocab', 'grammar', 'dialogue', 'conversation'] as const).map((tab) => {
+                              const isActive = activeHandbookSubTab === tab;
+                              let title = '';
+                              let mmTitle = '';
+                              let thTitle = '';
+                              let icon = null;
 
-                    console.log("Current Data State (GrammarChapters):", grammarChapters);
-                    console.log("Current Data State (Active Chapter):", chapter);
-                    console.log("Current Data State (GrammarExtMap):", grammarExtMap);
+                              if (tab === 'vocab') {
+                                title = 'Vocabulary';
+                                mmTitle = 'ဝေါဟာရစု';
+                                thTitle = 'คำศัพท์';
+                                icon = <FileText className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} strokeWidth={2} />;
+                              } else if (tab === 'grammar') {
+                                title = 'Grammar';
+                                mmTitle = 'သဒ္ဒါ';
+                                thTitle = 'ไวยากรณ์';
+                                icon = <BookOpen className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} strokeWidth={2} />;
+                              } else if (tab === 'dialogue') {
+                                title = 'Dialogue';
+                                mmTitle = 'အမေးအဖြေ';
+                                thTitle = 'ถาม-ตอบ';
+                                icon = <HelpCircle className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} strokeWidth={2} />;
+                              } else {
+                                title = 'Conversation';
+                                mmTitle = 'စကားပြော';
+                                thTitle = 'บทสนทนา';
+                                icon = <Users className={`w-5 h-5 ${isActive ? 'text-white' : 'text-brand-purple'}`} strokeWidth={2} />;
+                              }
 
-                    return (
-                      <>
-                        {/* Mobile Back navigation button */}
-                        <div className="lg:hidden">
-                          <button
-                            onClick={() => setMobileChapterDetailActive(false)}
-                            className="text-brand-purple text-xs font-sans font-black flex items-center gap-1 hover:underline pb-3"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                            BACK TO HANDBOOK CHAPTERS LIST
-                          </button>
-                        </div>
-
-                        {/* Active Chapter Splash Welcome card */}
-                        <div className="duo-card p-6 md:p-8 bg-white border-2 border-gray-100 flex items-start gap-4">
-                          <div className="w-12 h-12 bg-brand-purple-light text-brand-purple rounded-2xl flex items-center justify-center shrink-0 border border-brand-purple/20 shadow-xs font-sans font-black text-sm select-none">
-                            {chapterNumDisplay}
+                              return (
+                                <button
+                                  key={tab}
+                                  onClick={() => setActiveHandbookSubTab(tab)}
+                                  className={`flex flex-col items-center justify-center p-3.5 sm:p-4 rounded-2xl border-2 transition-all outline-none text-center select-none cursor-pointer ${
+                                    isActive
+                                      ? 'bg-brand-purple border-brand-purple text-white border-b-4 border-brand-purple-shadow shadow-xs'
+                                      : 'bg-white hover:bg-gray-50 text-brand-dark border-gray-150 border-b-4'
+                                  }`}
+                                >
+                                  <div className={`p-2 rounded-xl mb-1.5 shrink-0 flex items-center justify-center ${isActive ? 'bg-white/10' : 'bg-brand-purple-light'}`}>
+                                    {icon}
+                                  </div>
+                                  <span className="font-sans font-black text-xs sm:text-sm tracking-tight line-clamp-1 leading-tight">
+                                    {title}
+                                  </span>
+                                  <span className={`text-[9.5px] font-sans font-bold leading-tight mt-0.5 ${isActive ? 'text-white/80' : 'text-brand-muted'}`}>
+                                    {mmTitle} • {thTitle}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
-                          <div>
-                            <span className="text-[10px] font-sans text-brand-purple bg-brand-purple-light px-2.5 py-1 rounded-full font-extrabold border border-brand-purple/20 select-none uppercase">
-                              Active Handbook Chapter
-                            </span>
-                            <h2 className="text-xl md:text-2xl font-sans font-black text-brand-dark tracking-tight mt-3">
-                              Lesson {chapterNumDisplay} of {totalChapters}: {chapterTitle}
-                            </h2>
-                            <p className="text-xs text-brand-muted font-sans font-bold mt-1">
-                              {chapter?.titleMyanmar || chapter?.title_myanmar || ''}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* 4 Tabs Selector for Active Content List */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3 rounded-3xl border-2 border-gray-100 shadow-xs mb-6">
-                          {(['vocab', 'grammar', 'dialogue', 'conversation'] as const).map((tab) => {
-                            const isActive = activeHandbookSubTab === tab;
-                            let title = '';
-                            let mmTitle = '';
-                            let thTitle = '';
-                            let icon = null;
-
-                            if (tab === 'vocab') {
-                              title = 'Vocabulary';
-                              mmTitle = 'ဝေါဟာရစု';
-                              thTitle = 'คำศัพท์';
-                              icon = <FileText className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
-                            } else if (tab === 'grammar') {
-                              title = 'Grammar';
-                              mmTitle = 'သဒ္ဒါ';
-                              thTitle = 'ไวยากรณ์';
-                              icon = <BookOpen className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
-                            } else if (tab === 'dialogue') {
-                              title = 'Dialogue';
-                              mmTitle = 'အမေးအဖြေ';
-                              thTitle = 'ถาม-ตอบ';
-                              icon = <HelpCircle className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
-                            } else {
-                              title = 'Conversation';
-                              mmTitle = 'စကားပြော';
-                              thTitle = 'บทสนทนา';
-                              icon = <Users className={`w-5 h-5 mr-3 stroke-2 ${isActive ? 'text-white' : 'text-black'}`} strokeWidth={2} />;
-                            }
-
-                            return (
-                              <button
-                                key={tab}
-                                onClick={() => setActiveHandbookSubTab(tab)}
-                                className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 transition-all outline-none text-center select-none ${
-                                  isActive
-                                    ? 'bg-brand-purple border-brand-purple text-white border-b-4 border-brand-purple-shadow shadow-xs'
-                                    : 'bg-white hover:bg-gray-50 text-brand-dark border-gray-150 border-b-4'
-                                }`}
-                              >
-                                <div className={`p-2 rounded-xl mb-1.5 shrink-0 flex items-center justify-center ${isActive ? 'bg-white/10' : 'bg-brand-purple-light'}`}>
-                                  {icon}
-                                </div>
-                                <span className="font-sans font-black text-xs tracking-tight line-clamp-1 leading-tight">
-                                  {title}
-                                </span>
-                                <span className={`text-[9px] font-sans font-bold leading-tight mt-0.5 ${isActive ? 'text-white/80' : 'text-brand-muted'}`}>
-                                  {mmTitle} • {thTitle}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
 
                         {/* Selected Tab Content Area */}
                         <div className="space-y-6 pb-24">
@@ -6113,11 +6563,13 @@ startxref
                                 const phonetic = (v?.phonetic || v?.text_phonetic || v?.textPhonetic || '').toLowerCase();
                                 const english = (v?.english || v?.text_english || v?.textEnglish || '').toLowerCase();
                                 const myanmar = (v?.myanmar || v?.text_myanmar || v?.textMyanmar || '').toLowerCase();
+                                const myanmarPhonetic = (v?.phonetic_mm || v?.phoneticMm || v?.myanmarPhonetic || '').toLowerCase();
                                 return (
                                   thai.includes(q) ||
                                   phonetic.includes(q) ||
                                   english.includes(q) ||
-                                  myanmar.includes(q)
+                                  myanmar.includes(q) ||
+                                  myanmarPhonetic.includes(q)
                                 );
                               });
 
@@ -6174,33 +6626,34 @@ startxref
                                         const phoneticText = item?.phonetic || item?.text_phonetic || item?.textPhonetic || '';
                                         const englishText = item?.english || item?.text_english || item?.textEnglish || '';
                                         const myanmarText = item?.myanmar || item?.text_myanmar || item?.textMyanmar || '';
+                                        const myanmarPhonetic = item?.phonetic_mm || item?.phoneticMm || item?.myanmarPhonetic || '';
 
                                         return (
                                           <div
                                             key={idx}
-                                            className="duo-card p-4 bg-gray-50/50 border border-gray-100 flex items-center justify-between gap-4 hover:border-gray-250 transition-all"
+                                            className="duo-card p-5 bg-gray-50/50 border border-gray-100 flex items-center justify-between gap-4 hover:border-gray-250 transition-all min-h-[150px]"
                                           >
                                             <div className="min-w-0 flex-1">
-                                              <div className="font-sans font-black text-brand-dark text-sm leading-tight flex items-baseline gap-1.5 flex-wrap">
-                                                <span className="text-brand-purple text-[15px]">{thaiText}</span>
+                                              <div className="font-sans font-black text-brand-dark text-base leading-tight flex items-baseline gap-2 flex-wrap">
+                                                <span className="text-brand-purple text-xl sm:text-2xl">{thaiText}</span>
                                                 {phoneticText && (
-                                                  <span className="text-[10px] text-brand-green font-extrabold italic bg-brand-green-light px-2 py-0.5 rounded-full">
+                                                  <span className="text-xs sm:text-sm text-brand-green font-extrabold italic bg-brand-green-light px-2.5 py-1 rounded-full">
                                                     ({phoneticText})
                                                   </span>
                                                 )}
                                                 {phoneticText && (
-                                                  <span className="text-[10px] text-emerald-600 font-extrabold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                                                    အသံထွက်: {getMyanmarPhonetic(phoneticText)}
+                                                  <span className="text-sm sm:text-base text-emerald-700 font-black bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full leading-relaxed">
+                                                    အသံထွက်: {myanmarPhonetic || getMyanmarPhonetic(phoneticText)}
                                                   </span>
                                                 )}
                                               </div>
                                               {englishText && (
-                                                <div className="text-[11px] text-brand-muted font-sans font-bold leading-normal mt-2">
+                                                <div className="text-sm text-brand-muted font-sans font-bold leading-normal mt-3">
                                                   {englishText}
                                                 </div>
                                               )}
                                               {myanmarText && (
-                                                <div className="text-xs text-brand-dark font-sans font-semibold border-l-2 border-brand-purple/25 pl-2 mt-1">
+                                                <div className="text-base sm:text-lg text-brand-dark font-sans font-semibold border-l-3 border-brand-purple/25 pl-3 mt-2 leading-relaxed">
                                                   {myanmarText}
                                                 </div>
                                               )}
@@ -6708,13 +7161,13 @@ startxref
                             return null;
                           })()}
                         </div>
-                      </>
+                      </div>
                     );
                   })()}
                 </div>
-
               </div>
-            )}
+            </div>
+          )}
 
             {/* TAB CONTENT: 3. Alphabet Guide */}
             {dashboardTab === 'alphabet' && (
@@ -6722,7 +7175,7 @@ startxref
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div>
                     <h3 className="font-sans font-black text-brand-dark text-base uppercase tracking-tight">
-                      Alphabet Guide • ထိုင်းအက္ခရာများ
+                      {t('navbar.alphabet_guide')}
                     </h3>
                   </div>
                 </div>
@@ -6730,6 +7183,413 @@ startxref
                 <AlphabetGuide speakText={speakText} />
               </div>
             )}
+
+            {/* TAB CONTENT: 4. E-Book Audio Player */}
+            {dashboardTab === 'ebooks' && (() => {
+              const activeEbook = EBOOK_AUDIO_DATA.find(b => b.id === selectedAudioEbookId) || EBOOK_AUDIO_DATA[2];
+              const activeTrack = activeEbook.tracks.find(t => t.id === selectedAudioTrackId) || activeEbook.tracks[0] || EBOOK_AUDIO_DATA[2].tracks[0];
+              const trackPhrases = activeTrack.phrases || [];
+
+              const filteredPhrases = (trackPhrases || []).filter(p => {
+                if (!p) return false;
+                const q = (audioPhraseSearch || '').trim().toLowerCase();
+                if (!q) return true;
+                const thai = (p.thai || '').toLowerCase();
+                const phonetic = (p.phonetic || '').toLowerCase();
+                const myanmar = (p.myanmar || '').toLowerCase();
+                return (
+                  thai.includes(q) ||
+                  phonetic.includes(q) ||
+                  myanmar.includes(q)
+                );
+              });
+
+              const formatTime = (secs: number) => {
+                const m = Math.floor(secs / 60);
+                const s = Math.floor(secs % 60);
+                return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+              };
+
+              const prepareAudioPlayer = (track = activeTrack) => {
+                if (!audioPlayerRef.current || audioPlayerRef.current.src !== track.audioUrl) {
+                  audioPlayerRef.current?.destroy();
+                  const player = createWebAudioPlayer(track.audioUrl);
+                  player.playbackRate = audioPlayerSpeed;
+                  player.ontimeupdate = () => setAudioPlayerCurrentTime(player.currentTime);
+                  player.onloadedmetadata = () => setAudioPlayerDuration(player.duration || track.durationSec);
+                  player.onended = () => setIsAudioPlayerPlaying(false);
+                  player.onerror = () => setIsAudioPlayerPlaying(false);
+                  audioPlayerRef.current = player;
+                }
+                return audioPlayerRef.current;
+              };
+
+              const playSelectedTrack = (track = activeTrack) => {
+                const player = prepareAudioPlayer(track);
+                void player.play().then(() => setIsAudioPlayerPlaying(true)).catch((error) => {
+                  setIsAudioPlayerPlaying(false);
+                  console.warn('Web Audio eBook playback failed.', error);
+                });
+              };
+
+              return (
+                <div className="max-w-7xl mx-auto space-y-6 min-h-[500px]">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    {/* Left Column: Book & Track Selection (5 cols) */}
+                    <div className="lg:col-span-5 space-y-6">
+                      {/* Select E-Book Card */}
+                      <div className="bg-white rounded-3xl border-2 border-gray-100 p-5 space-y-4 shadow-xs">
+                        <div className="border-b border-gray-100 pb-3">
+                          <h3 className="font-sans font-black text-brand-purple text-xs uppercase tracking-wider">
+                            SELECT E-BOOK • စာအုပ်ရွေးချယ်ရန်
+                          </h3>
+                        </div>
+
+                        <div className="space-y-3">
+                          {EBOOK_AUDIO_DATA.map((book) => {
+                            const isSelected = book.id === activeEbook.id;
+                            let iconBadge = null;
+
+                            if (book.iconType === 'abcd') {
+                              iconBadge = (
+                                <div className="w-12 h-12 rounded-2xl bg-blue-500 text-white font-sans font-black text-xs flex items-center justify-center shrink-0 shadow-xs select-none">
+                                  AB<br />CD
+                                </div>
+                              );
+                            } else if (book.iconType === 'book') {
+                              iconBadge = (
+                                <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs select-none">
+                                  <BookOpen className="w-6 h-6 text-white" />
+                                </div>
+                              );
+                            } else {
+                              iconBadge = (
+                                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs select-none">
+                                  <Mail className="w-6 h-6 text-white" />
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={book.id}
+                                onClick={() => {
+                                  audioPlayerRef.current?.destroy();
+                                  audioPlayerRef.current = null;
+                                  setSelectedAudioEbookId(book.id);
+                                  const firstTrack = book.tracks[0];
+                                  if (firstTrack) {
+                                    setSelectedAudioTrackId(firstTrack.id);
+                                    setAudioPlayerDuration(firstTrack.durationSec);
+                                    setAudioPlayerCurrentTime(0);
+                                    setIsAudioPlayerPlaying(false);
+                                  }
+                                }}
+                                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3.5 select-none ${
+                                  isSelected
+                                    ? 'border-brand-purple bg-brand-purple-light/20 shadow-xs'
+                                    : 'border-gray-150 bg-white hover:bg-gray-50'
+                                }`}
+                              >
+                                {iconBadge}
+                                <div className="space-y-1 min-w-0 flex-1">
+                                  <h4 className="font-sans font-black text-sm text-brand-dark leading-snug truncate">
+                                    {book.title}
+                                  </h4>
+                                  <p className="text-xs font-sans font-bold text-brand-muted line-clamp-1">
+                                    {book.subtitle}
+                                  </p>
+                                  <div className="flex items-center gap-2 pt-0.5">
+                                    <span className="text-[9px] font-sans font-extrabold px-2 py-0.5 rounded bg-gray-100 text-brand-dark uppercase">
+                                      {book.author}
+                                    </span>
+                                    <span className="text-[9px] font-sans font-extrabold px-2 py-0.5 rounded bg-brand-purple-light text-brand-purple uppercase">
+                                      {book.trackCountLabel}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Audio Track List Card */}
+                      <div className="bg-white rounded-3xl border-2 border-gray-100 p-5 space-y-4 shadow-xs">
+                        <div className="border-b border-gray-100 pb-3">
+                          <h3 className="font-sans font-black text-brand-purple text-xs uppercase tracking-wider">
+                            AUDIO TRACK LIST • အသံဖိုင်သင်ခန်းစာများ
+                          </h3>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {activeEbook.tracks.map((track) => {
+                            const isSelected = track.id === activeTrack.id;
+
+                            return (
+                              <div
+                                key={track.id}
+                                onClick={() => {
+                                  setSelectedAudioTrackId(track.id);
+                                  setAudioPlayerDuration(track.durationSec);
+                                  setAudioPlayerCurrentTime(0);
+                                  playSelectedTrack(track);
+                                }}
+                                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 select-none ${
+                                  isSelected
+                                    ? 'border-brand-purple bg-brand-purple-light/20 shadow-xs'
+                                    : 'border-gray-150 bg-white hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <span className="font-sans font-black text-sm text-brand-purple shrink-0">
+                                    {track.trackNumber}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <h5 className="font-sans font-black text-xs text-brand-dark truncate leading-tight">
+                                      {track.title}
+                                    </h5>
+                                    <p className="text-[10.5px] font-sans font-bold text-brand-muted truncate mt-0.5">
+                                      {track.subtitle}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 shrink-0">
+                                  <span className="text-[11px] font-mono font-bold text-brand-muted">
+                                    {track.duration}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                    }}
+                                    className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-brand-purple hover:bg-white cursor-pointer"
+                                    title="Download Track"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Audio Player & Phrases (7 cols) */}
+                    <div className="lg:col-span-7 space-y-6">
+                      {/* Native Audio Player Card (Dark Navy) */}
+                      <div className="bg-[#0b0f28] text-white rounded-3xl p-6 md:p-8 space-y-6 shadow-xl border border-white/10 relative overflow-hidden select-none">
+                        {/* Top Header Status Row */}
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="bg-purple-900/60 text-purple-200 border border-purple-500/30 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            <Headphones className="w-3.5 h-3.5 text-purple-400" />
+                            HIGH-QUALITY NATIVE PLAYER
+                          </span>
+                          <span className="text-emerald-400 font-mono text-[11px] font-bold flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            Offline Ready
+                          </span>
+                        </div>
+
+                        {/* Center Track Details Row */}
+                        <div className="flex items-start gap-5 pt-2">
+                          <div className="w-20 h-20 rounded-2xl bg-amber-500 flex items-center justify-center shrink-0 shadow-lg text-white">
+                            {activeEbook.iconType === 'abcd' ? (
+                              <span className="font-sans font-black text-sm text-white">ABCD</span>
+                            ) : activeEbook.iconType === 'book' ? (
+                              <BookOpen className="w-10 h-10 text-white" />
+                            ) : (
+                              <Mail className="w-10 h-10 text-white" />
+                            )}
+                          </div>
+
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <span className="text-purple-400 font-mono font-bold text-[10px] uppercase tracking-wider block">
+                              BOOK TRACK #{activeTrack.trackNumber}
+                            </span>
+                            <h3 className="text-base sm:text-lg md:text-xl font-sans font-black text-white tracking-tight uppercase leading-snug">
+                              LESSON {activeTrack.trackNumber}: {activeTrack.title}
+                            </h3>
+                            <p className="text-xs text-slate-300 font-sans font-bold leading-tight">
+                              {activeTrack.subtitle}
+                            </p>
+                            <div className="pt-1">
+                              <span className="bg-slate-800/90 text-slate-300 px-3 py-0.5 rounded-full text-[10px] font-medium border border-slate-700/80 inline-block">
+                                Narrator: {activeEbook.author}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Progress Slider & Timers */}
+                        <div className="space-y-2 pt-2">
+                          <div className="relative flex items-center">
+                            <input
+                              type="range"
+                              min={0}
+                              max={audioPlayerDuration || 100}
+                              value={audioPlayerCurrentTime}
+                              onChange={(e) => {
+                                const newTime = Number(e.target.value);
+                                setAudioPlayerCurrentTime(newTime);
+                                if (audioPlayerRef.current) {
+                                  audioPlayerRef.current.currentTime = newTime;
+                                }
+                              }}
+                              className="w-full h-1.5 bg-slate-800 rounded-full appearance-none outline-none cursor-pointer accent-purple-500"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] font-mono font-bold text-slate-400">
+                            <span>{formatTime(audioPlayerCurrentTime)}</span>
+                            <span>{formatTime(audioPlayerDuration)}</span>
+                          </div>
+                        </div>
+
+                        {/* Center Player Controls */}
+                        <div className="flex items-center justify-center gap-6 py-2">
+                          <button
+                            onClick={() => {
+                              const newTime = Math.max(0, audioPlayerCurrentTime - 10);
+                              setAudioPlayerCurrentTime(newTime);
+                              if (audioPlayerRef.current) audioPlayerRef.current.currentTime = newTime;
+                            }}
+                            className="p-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            title="Rewind 10s"
+                          >
+                            <SkipBack className="w-6 h-6" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (isAudioPlayerPlaying && audioPlayerRef.current) {
+                                audioPlayerRef.current.pause();
+                                setIsAudioPlayerPlaying(false);
+                              } else {
+                                playSelectedTrack();
+                              }
+                            }}
+                            className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
+                            title={isAudioPlayerPlaying ? "Pause" : "Play"}
+                          >
+                            {isAudioPlayerPlaying ? (
+                              <Pause className="w-7 h-7 text-black fill-black" />
+                            ) : (
+                              <Play className="w-7 h-7 text-black fill-black ml-1" />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const newTime = Math.min(audioPlayerDuration, audioPlayerCurrentTime + 10);
+                              setAudioPlayerCurrentTime(newTime);
+                              if (audioPlayerRef.current) audioPlayerRef.current.currentTime = newTime;
+                            }}
+                            className="p-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            title="Forward 10s"
+                          >
+                            <SkipForward className="w-6 h-6" />
+                          </button>
+                        </div>
+
+                        {/* Speed Control Row at Bottom */}
+                        <div className="flex items-center gap-3 pt-2 border-t border-white/10">
+                          <span className="text-slate-400 text-[10px] font-mono font-bold uppercase tracking-wider">
+                            SPEED:
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {[0.8, 1, 1.25, 1.5].map((speed) => {
+                              const isActive = audioPlayerSpeed === speed;
+                              return (
+                                <button
+                                  key={speed}
+                                  onClick={() => {
+                                    setAudioPlayerSpeed(speed);
+                                    if (audioPlayerRef.current) {
+                                      audioPlayerRef.current.playbackRate = speed;
+                                    }
+                                  }}
+                                  className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                                    isActive
+                                      ? 'bg-brand-purple text-white shadow-xs'
+                                      : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {speed}x
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Synchronized Transcript & Interactive Phrases Card */}
+                      <div className="bg-white rounded-3xl border-2 border-gray-100 p-6 space-y-4 shadow-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                          <div>
+                            <span className="text-[10px] font-sans font-black text-brand-purple uppercase tracking-wider block">
+                              SYNCHRONIZED TRANSCRIPT • စကားပြောစာသားများ
+                            </span>
+                            <h4 className="text-base sm:text-lg font-sans font-black text-brand-dark flex items-center gap-2 tracking-tight mt-0.5">
+                              📖 INTERACTIVE LESSON PHRASES ({filteredPhrases.length})
+                            </h4>
+                          </div>
+
+                          <div className="relative shrink-0">
+                            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              placeholder="Search phrases..."
+                              value={audioPhraseSearch}
+                              onChange={(e) => setAudioPhraseSearch(e.target.value)}
+                              className="pl-9 pr-4 py-1.5 text-xs font-sans font-bold rounded-xl border border-gray-200 bg-gray-50 focus:bg-white outline-none w-full sm:w-60 focus:border-brand-purple transition-all"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Phrase List */}
+                        <div className="space-y-3">
+                          {filteredPhrases.length === 0 ? (
+                            <div className="p-8 text-center bg-gray-50/50 rounded-2xl border border-gray-150">
+                              <p className="text-xs font-sans font-bold text-brand-muted">
+                                No interactive phrases found for this search.
+                              </p>
+                            </div>
+                          ) : (
+                            filteredPhrases.map((phrase) => (
+                              <div
+                                key={phrase.id}
+                                className="p-4 rounded-2xl border-2 border-gray-100 bg-white hover:border-gray-200 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                              >
+                                <div className="space-y-1">
+                                  <h5 className="text-lg font-sans font-black text-brand-dark tracking-tight">
+                                    {phrase.thai}
+                                  </h5>
+                                  <p className="text-xs font-sans font-bold text-brand-purple">
+                                    {phrase.phonetic}
+                                  </p>
+                                  <p className="text-xs font-sans font-bold text-brand-muted">
+                                    {phrase.myanmar}
+                                  </p>
+                                </div>
+
+                                <button
+                                  onClick={() => speakGlobalText(phrase.thai)}
+                                  className="px-4 py-2 bg-brand-purple-light text-brand-purple hover:bg-brand-purple hover:text-white rounded-xl font-sans font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all border border-brand-purple/20 cursor-pointer shrink-0 self-start sm:self-center"
+                                >
+                                  <Volume2 className="w-4 h-4" />
+                                  <span>SPEAK</span>
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* TAB CONTENT: 4. Notebook & Custom Vocabulary (Add Word Panel) */}
             {dashboardTab === 'notebook' && (
@@ -7346,6 +8206,17 @@ startxref
                             Level {Math.floor(progress.totalXp / 1000) + 1} Thai Scholar
                           </span>
                         </div>
+
+                        {isLoggedIn && (
+                          <button
+                            onClick={handleSignOut}
+                            className="w-full mt-3 py-2.5 px-4 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border-2 border-rose-200 hover:border-rose-600 rounded-xl transition-all font-sans font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
+                            id="btn-profile-logout"
+                          >
+                            <LogOut className="w-4 h-4 stroke-[2.5]" />
+                            Log Out • အကောင့်ထွက်မည်
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -7453,42 +8324,46 @@ startxref
 
                     {/* Metrics Cards Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {/* Lessons Passed */}
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/85 text-center">
-                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-bold">Lessons Passed</span>
-                        <span className="text-2xl font-sans font-black text-brand-dark min-h-8 flex items-center justify-center">
-                          {progress.completedLessons.length} / {lessons.length}
+                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-black tracking-wider">Lessons Passed</span>
+                        <span className="text-2xl font-sans font-black text-brand-dark min-h-8 flex items-center justify-center mt-0.5">
+                          {progress.completedLessons.length} <span className="text-xs text-slate-400 font-bold ml-1">/ {lessons.length || 10}</span>
                         </span>
-                        <div className="w-full bg-gray-200 rounded-full h-1 mt-1.5 overflow-hidden">
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2 overflow-hidden">
                           <div 
                             className="bg-brand-purple h-full rounded-full transition-all duration-500" 
-                            style={{ width: `${Math.min(100, lessons.length > 0 ? (progress.completedLessons.length / lessons.length) * 100 : 0)}%` }}
+                            style={{ width: `${Math.min(100, lessons.length > 0 ? (progress.completedLessons.length / lessons.length) * 100 : (progress.completedLessons.length > 0 ? 100 : 0))}%` }}
                           ></div>
                         </div>
                       </div>
 
+                      {/* Saved / Mastered Vocabulary Words */}
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/85 text-center">
-                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-bold">Saved Words</span>
-                        <span className="text-2xl font-sans font-black text-brand-purple min-h-8 flex items-center justify-center">
+                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-black tracking-wider">Saved Words</span>
+                        <span className="text-2xl font-sans font-black text-brand-purple min-h-8 flex items-center justify-center mt-0.5">
                           {progress.masteredWords.length}
                         </span>
                         <span className="text-[9px] text-brand-muted block leading-none mt-1 font-bold">marked mastered</span>
                       </div>
 
+                      {/* Total XP & Active Streak */}
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/85 text-center">
-                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-bold">Active Streak</span>
-                        <span className="text-2xl font-sans font-black text-amber-500 min-h-8 flex items-center justify-center gap-0.5">
-                          🔥 {progress.streak} <span className="text-[10px] text-brand-muted">days</span>
+                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-black tracking-wider">Total XP</span>
+                        <span className="text-2xl font-sans font-black text-amber-500 min-h-8 flex items-center justify-center mt-0.5 gap-1">
+                          ⚡ {progress.totalXp} <span className="text-[10px] text-brand-muted font-bold">XP</span>
                         </span>
-                        <span className="text-[9px] text-brand-muted block leading-none mt-1 font-bold">keep practicing!</span>
+                        <span className="text-[9px] text-amber-600 block leading-none mt-1 font-extrabold">🔥 {progress.streak} day streak</span>
                       </div>
 
+                      {/* Current Level */}
                       <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/85 text-center">
-                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-bold">Current Level</span>
-                        <span className="text-2xl font-sans font-black text-brand-green min-h-8 flex items-center justify-center">
-                          LVL {Math.floor(progress.totalXp / 1000) + 1}
+                        <span className="text-[10px] font-sans text-brand-muted block uppercase font-black tracking-wider">Current Level</span>
+                        <span className="text-2xl font-sans font-black text-brand-green min-h-8 flex items-center justify-center mt-0.5">
+                          LVL {Math.floor(progress.totalXp / 720) + 1}
                         </span>
                         <span className="text-[9px] text-brand-muted block leading-none mt-1 font-bold">
-                          {1000 - (progress.totalXp % 1000)} XP to next
+                          {720 - (progress.totalXp % 720)} XP to next
                         </span>
                       </div>
                     </div>
@@ -7530,6 +8405,82 @@ startxref
                             <p className="text-[9px] text-brand-muted leading-tight font-bold">Earned 1000+ points.</p>
                           </div>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Lesson Scores & Exam History Section */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-[11px] font-sans font-black text-brand-dark uppercase tracking-wider flex items-center gap-1.5 text-left">
+                          <CheckCircle className="w-3.5 h-3.5 text-brand-green shrink-0" />
+                          📊 Lesson Exam Scores & Progress (သင်ခန်းစာအမှတ်များနှင့် ရမှတ်များ)
+                        </h5>
+                        <span className="text-[10px] font-sans font-extrabold text-brand-purple bg-brand-purple-light px-2.5 py-0.5 rounded-full">
+                          {progress.completedLessons.length} / {lessons.length || 0} Passed
+                        </span>
+                      </div>
+
+                      <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+                        {lessons && lessons.length > 0 ? (
+                          <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 scrollbar-thin">
+                            {lessons.map((lesson) => {
+                              const isPassed = progress.completedLessons.some((id: any) => String(id) === String(lesson.id));
+                              const score = progress.quizHighScores[lesson.id];
+                              const hasScore = score !== undefined && score !== null;
+
+                              return (
+                                <div key={lesson.id} className="p-3 sm:p-3.5 bg-white flex items-center justify-between gap-3 hover:bg-gray-50/80 transition-colors text-left">
+                                  <div className="min-w-0 flex-1 flex items-center gap-3">
+                                    <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-sans font-black shrink-0 ${
+                                      isPassed ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-gray-100 text-gray-500 border border-gray-200'
+                                    }`}>
+                                      {lesson.id}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <h6 className="text-xs font-sans font-black text-slate-800 truncate">
+                                        {lesson.titleEnglish || `Lesson ${lesson.id}`}
+                                      </h6>
+                                      <p className="text-[10px] font-sans text-emerald-600 font-bold truncate">
+                                        {lesson.titleThai} {lesson.titleMyanmar ? `• ${lesson.titleMyanmar}` : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <div className="text-right min-w-[80px]">
+                                      {hasScore ? (
+                                        <span className={`text-xs font-mono font-black ${score >= 80 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                          {score}%
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-sans text-slate-400 font-bold">
+                                          {isPassed ? 'Passed ✓' : 'No exam yet'}
+                                        </span>
+                                      )}
+                                      <span className="block text-[8.5px] font-sans uppercase font-extrabold mt-0.5" style={{ color: isPassed ? '#10b981' : (hasScore ? '#f59e0b' : '#94a3b8') }}>
+                                        {isPassed ? 'Completed ✓' : (hasScore ? 'Attempted' : 'Not Started')}
+                                      </span>
+                                    </div>
+
+                                    <button
+                                      onClick={() => {
+                                        handleLessonClick(String(lesson.id));
+                                        setDashboardTab('lessons');
+                                      }}
+                                      className="px-3 py-1.5 bg-brand-purple-light hover:bg-brand-purple text-brand-purple hover:text-white rounded-xl text-[10px] font-sans font-black transition-all cursor-pointer border border-brand-purple/20"
+                                    >
+                                      {isPassed ? 'Review' : 'Take Quiz'}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="p-6 text-center text-brand-muted">
+                            <p className="text-xs font-sans font-bold">No lesson records available.</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -8116,7 +9067,7 @@ startxref
                       type="button"
                       onClick={() => {
                         setAdminCategory('curriculum');
-                        setAdminHubTab('courses');
+                        setAdminHubTab('cms');
                       }}
                       className={`flex-1 py-4.5 text-center font-sans font-black text-xs sm:text-[13px] uppercase tracking-wider cursor-pointer transition-all border-b-4 flex items-center justify-center gap-2 ${
                         adminCategory === 'curriculum'
@@ -8188,6 +9139,18 @@ startxref
                         <>
                           <button
                             type="button"
+                            onClick={() => setAdminHubTab('cms')}
+                            className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10.5px] font-sans font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                              adminHubTab === 'cms'
+                                ? 'bg-brand-purple text-white shadow-sm shadow-brand-purple-shadow'
+                                : 'text-gray-300 hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            <Database className="w-3.5 h-3.5" />
+                            Content CMS
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setAdminHubTab('courses')}
                             className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10.5px] font-sans font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
                               adminHubTab === 'courses'
@@ -8197,6 +9160,18 @@ startxref
                           >
                             <BookOpen className="w-3.5 h-3.5" />
                             Course Manager ({courses.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminHubTab('lessons')}
+                            className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-[10.5px] font-sans font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                              adminHubTab === 'lessons'
+                                ? 'bg-brand-purple text-white shadow-sm shadow-brand-purple-shadow'
+                                : 'text-gray-300 hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-yellow-300" />
+                            ✍️ Lesson Entry ({lessons.length})
                           </button>
                           <button
                             type="button"
@@ -8668,6 +9643,13 @@ startxref
                     )}
 
                     {/* SUB-SECTION 3: COURSE MANAGER */}
+                    {adminHubTab === 'cms' && (
+                      <div className="space-y-6">
+                        <AdminDataEntryDashboard />
+                        <AdminContentManager />
+                      </div>
+                    )}
+
                     {adminHubTab === 'courses' && (
                       <div className="space-y-6 animate-fade-in" id="admin-courses-tab-view">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-left">
@@ -9682,6 +10664,278 @@ startxref
                                 </div>
                               );
                             })()}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-SECTION: MANUAL LESSON ENTRY FORM (DIRECT D1 PUBLISHING) */}
+                    {adminHubTab === 'lessons' && (
+                      <div className="space-y-6 animate-fade-in text-left" id="admin-lessons-tab-view">
+                        <div className="bg-gradient-to-r from-brand-purple via-indigo-900 to-purple-950 p-6 rounded-2xl border border-purple-800 text-white shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div>
+                            <span className="text-[9.5px] font-black uppercase tracking-widest text-purple-200 block">
+                              CLOUDFLARE D1 DATABASE INGESTION ENGINE
+                            </span>
+                            <h3 className="text-lg sm:text-xl font-black text-yellow-300 tracking-tight flex items-center gap-2 mt-0.5">
+                              ✍️ Manual Lesson Entry Form • သင်ခန်းစာအသစ်ထည့်သွင်းခြင်း
+                            </h3>
+                            <p className="text-xs text-purple-100 font-medium max-w-2xl mt-1">
+                              Manually insert new syllabus lessons directly into the Cloudflare D1 database (<code className="text-yellow-200 font-mono">lessons</code> table). Published lessons become available instantly to all students.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
+                              D1 Table: lessons ({lessons.length})
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                          {/* Form Entry Panel */}
+                          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border-2 border-gray-100 shadow-sm space-y-4">
+                            <h4 className="text-xs font-sans font-black text-slate-800 uppercase tracking-wider border-b pb-2 text-brand-purple flex items-center gap-2">
+                              <Plus className="w-4 h-4 text-brand-purple" />
+                              Lesson Ingestion Entry Form
+                            </h4>
+
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!adminLessonId.trim() || !adminLessonTitleThai.trim() || !adminLessonTitleMyanmar.trim()) {
+                                  alert("Lesson ID/Number, Thai Title, and Myanmar Title are required.");
+                                  return;
+                                }
+
+                                setIsPublishingLessonD1(true);
+
+                                const cleanId = adminLessonId.trim().toLowerCase().replace(/\s+/g, '-');
+                                const lessonPayload = {
+                                  id: cleanId,
+                                  lesson_id: cleanId,
+                                  course_id: adminLessonCourseId,
+                                  courseId: adminLessonCourseId,
+                                  title_thai: adminLessonTitleThai.trim(),
+                                  titleThai: adminLessonTitleThai.trim(),
+                                  title_phonetic: adminLessonTitlePhonetic.trim(),
+                                  titlePhonetic: adminLessonTitlePhonetic.trim(),
+                                  title_english: adminLessonTitleEnglish.trim(),
+                                  titleEnglish: adminLessonTitleEnglish.trim(),
+                                  title_myanmar: adminLessonTitleMyanmar.trim(),
+                                  titleMyanmar: adminLessonTitleMyanmar.trim(),
+                                  description_english: adminLessonDescription.trim(),
+                                  description_myanmar: adminLessonDescription.trim(),
+                                  description: adminLessonDescription.trim()
+                                };
+
+                                try {
+                                  let res = await fetch('/api/lessons', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
+                                    body: JSON.stringify(lessonPayload)
+                                  });
+
+                                  if (!res.ok) {
+                                    res = await fetch('/api/insert-lesson', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
+                                      body: JSON.stringify(lessonPayload)
+                                    });
+                                  }
+
+                                  const newLessonObj: Lesson = {
+                                    id: cleanId,
+                                    courseId: adminLessonCourseId,
+                                    titleThai: adminLessonTitleThai.trim(),
+                                    titlePhonetic: adminLessonTitlePhonetic.trim(),
+                                    titleEnglish: adminLessonTitleEnglish.trim(),
+                                    titleMyanmar: adminLessonTitleMyanmar.trim(),
+                                    description: adminLessonDescription.trim()
+                                  };
+
+                                  setLessons(prev => sortLessonsNaturally([newLessonObj, ...prev.filter(l => String(l.id) !== String(cleanId))]));
+                                  addSystemLog('admin', `Published new lesson "${adminLessonTitleThai}" (${cleanId}) directly to Cloudflare D1.`);
+                                  alert(`Success! Lesson "${adminLessonTitleThai}" (#${cleanId}) published directly to Cloudflare D1 database.`);
+
+                                  setAdminLessonId('');
+                                  setAdminLessonTitleThai('');
+                                  setAdminLessonTitlePhonetic('');
+                                  setAdminLessonTitleEnglish('');
+                                  setAdminLessonTitleMyanmar('');
+                                  setAdminLessonDescription('');
+                                } catch (err: any) {
+                                  console.error("D1 lesson publishing failed:", err);
+                                  alert(`Error publishing lesson to Cloudflare D1: ${err?.message || err}`);
+                                } finally {
+                                  setIsPublishingLessonD1(false);
+                                }
+                              }}
+                              className="space-y-4"
+                            >
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-sans font-black text-slate-700 uppercase tracking-wider">
+                                    Assigned Target Course
+                                  </label>
+                                  <select
+                                    value={adminLessonCourseId}
+                                    onChange={(e) => setAdminLessonCourseId(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-brand-purple focus:border-brand-purple focus:outline-none cursor-pointer"
+                                  >
+                                    {courses.map(c => (
+                                      <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-sans font-black text-slate-700 uppercase tracking-wider">
+                                    Lesson ID / Code (e.g. 41 or lesson-41)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. lesson-41 or 41"
+                                    value={adminLessonId}
+                                    onChange={(e) => setAdminLessonId(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:border-brand-purple focus:outline-none"
+                                    required
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-sans font-black text-slate-700 uppercase tracking-wider">
+                                    Thai Title (ခေါင်းစဉ် ထိုင်းစာ)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. บทที่ 41: การพูดคุยทางธุรกิจ"
+                                    value={adminLessonTitleThai}
+                                    onChange={(e) => setAdminLessonTitleThai(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-brand-purple focus:outline-none"
+                                    required
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-sans font-black text-slate-700 uppercase tracking-wider">
+                                    Phonetic Pronunciation (အသံထွက်လမ်းညွှန်)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. bòt thîi 41: kaan phûut khuy"
+                                    value={adminLessonTitlePhonetic}
+                                    onChange={(e) => setAdminLessonTitlePhonetic(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:border-brand-purple focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-sans font-black text-slate-700 uppercase tracking-wider">
+                                    English Title (အင်္ဂလိပ်ခေါင်းစဉ်)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Lesson 41: Business Dialogue & Terms"
+                                    value={adminLessonTitleEnglish}
+                                    onChange={(e) => setAdminLessonTitleEnglish(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:border-brand-purple focus:outline-none"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="block text-[10px] font-sans font-black text-[#583092] uppercase tracking-wider">
+                                    Myanmar Title (မြန်မာခေါင်းစဉ်)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. သင်ခန်းစာ ၄၁: စီးပွားရေး စကားပြော"
+                                    value={adminLessonTitleMyanmar}
+                                    onChange={(e) => setAdminLessonTitleMyanmar(e.target.value)}
+                                    className="w-full px-3 py-2 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-extrabold text-[#583092] focus:border-brand-purple focus:outline-none"
+                                    required
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-sans font-black text-slate-700 uppercase tracking-wider">
+                                  Lesson Description / Detailed Instructions
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  placeholder="Enter lesson description, objective, and translation guidelines..."
+                                  value={adminLessonDescription}
+                                  onChange={(e) => setAdminLessonDescription(e.target.value)}
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:border-brand-purple focus:outline-none"
+                                />
+                              </div>
+
+                              <button
+                                type="submit"
+                                disabled={isPublishingLessonD1}
+                                className="w-full py-3.5 bg-gradient-to-r from-brand-purple to-purple-800 hover:brightness-105 text-white font-sans font-black text-xs uppercase tracking-wider rounded-xl border-b-4 border-purple-950 shadow-md cursor-pointer transition-all active:translate-y-0.5 flex items-center justify-center gap-2"
+                              >
+                                {isPublishingLessonD1 ? (
+                                  <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Publishing to Cloudflare D1 Database...
+                                  </>
+                                ) : (
+                                  <>
+                                    🚀 SAVE & PUBLISH LESSON TO D1 DATABASE
+                                  </>
+                                )}
+                              </button>
+                            </form>
+                          </div>
+
+                          {/* D1 Database Existing Lessons Table View */}
+                          <div className="lg:col-span-5 bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-sans font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <BookOpen className="w-4 h-4 text-brand-purple" />
+                                D1 Lessons Directory ({lessons.length})
+                              </h4>
+                            </div>
+
+                            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                              {lessons.map((les) => (
+                                <div key={les.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-brand-purple bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                                      #{les.id} • {les.courseId || 'course-basic'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (window.confirm(`Permanently delete lesson #${les.id} (${les.titleThai}) from Cloudflare D1?`)) {
+                                          try {
+                                            const res = await fetch(`/api/lessons?id=${encodeURIComponent(les.id)}`, { method: 'DELETE' });
+                                            if (res.ok) {
+                                              setLessons(prev => prev.filter(l => String(l.id) !== String(les.id)));
+                                              addSystemLog('admin', `Deleted lesson #${les.id} from Cloudflare D1.`);
+                                            }
+                                          } catch (err) {
+                                            console.error("Failed to delete lesson:", err);
+                                          }
+                                        }
+                                      }}
+                                      className="text-red-500 hover:text-red-700 text-xs p-1 rounded hover:bg-red-50 border-none cursor-pointer"
+                                      title="Delete Lesson from D1"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                  <p className="text-xs font-black text-slate-900">{les.titleThai}</p>
+                                  {les.titleMyanmar && <p className="text-[10px] text-purple-900 font-bold">{les.titleMyanmar}</p>}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -12036,8 +13290,7 @@ startxref
                                             <button
                                               onClick={() => {
                                                 const audioUrl = item.audio_url || (item as any).url;
-                                                const audio = new Audio(audioUrl);
-                                                audio.play().catch(e => console.error("Audio playback failure:", e));
+                                                playGlobalAudio(audioUrl);
                                               }}
                                               className="p-1 px-2 border border-slate-200 hover:bg-slate-50 text-brand-purple rounded text-[10px] uppercase font-bold cursor-pointer"
                                               title="Test Pronunciation Voice Audio"
@@ -13653,7 +14906,6 @@ startxref
 
           </div>
         ) : (
-          /* Active Lesson View: Displays study modules dashboard */
           <div className="space-y-6">
             
             {/* Context Header */}
@@ -13682,21 +14934,38 @@ startxref
                 </h2>
               </div>
 
-              {/* High Score rating badge */}
-              <div className="duo-card p-4 shrink-0 text-center md:text-right min-w-36 bg-gradient-to-br from-[#f2eefc]/40 to-transparent">
-                <div className="text-[10px] font-sans text-brand-purple uppercase tracking-wider font-extrabold">CHAPTER PROGRESS</div>
-                <div className="text-2xl font-sans font-black text-[#583092] mt-0.5">
-                  {(progress.quizHighScores[activeLesson?.id || 0] || 0)}%
+              {/* High Score rating badge & Lesson Completion Trigger */}
+              <div className="flex flex-col sm:flex-row md:flex-col items-center md:items-end gap-3 shrink-0">
+                {progress.completedLessons.some((id: any) => String(id) === String(activeLesson?.id)) ? (
+                  <span className="px-4 py-2 bg-emerald-50 text-emerald-700 border-2 border-emerald-300 rounded-2xl text-xs font-sans font-black flex items-center gap-1.5 shadow-3xs">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 fill-emerald-100" />
+                    Lesson Completed • ပြီးမြောက်ပြီး
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => activeLesson && handleLessonCompleted(activeLesson.id)}
+                    className="px-4 py-2.5 bg-brand-green hover:bg-emerald-600 text-white rounded-2xl border-b-4 border-emerald-700 font-sans font-black text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-sm cursor-pointer"
+                  >
+                    <CheckCircle className="w-4 h-4 text-white" />
+                    Complete Lesson • သင်ခန်းစာပြီးမြောက်ပြီ (+150 XP)
+                  </button>
+                )}
+
+                <div className="duo-card p-3.5 shrink-0 text-center md:text-right min-w-36 bg-gradient-to-br from-[#f2eefc]/40 to-transparent">
+                  <div className="text-[10px] font-sans text-brand-purple uppercase tracking-wider font-extrabold">CHAPTER PROGRESS</div>
+                  <div className="text-2xl font-sans font-black text-[#583092] mt-0.5">
+                    {(progress.quizHighScores[activeLesson?.id || 0] || 0)}%
+                  </div>
+                  <div className="text-[10px] font-sans text-brand-muted mt-0.5 font-bold">Highest Exam Score</div>
                 </div>
-                <div className="text-[10px] font-sans text-brand-muted mt-0.5 font-bold">Highest Exam Score</div>
               </div>
             </div>
 
             {/* Sub modules study tabs */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 border-b-2 border-gray-100 gap-2.5 py-2 select-none">
+            <div className="flex items-center overflow-x-auto scrollbar-none border-b-2 border-gray-100 gap-2 py-2 select-none flex-nowrap">
               <button
                 onClick={() => setActiveTab('vocabulary')}
-                className={`px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[105px] sm:min-w-0 px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
                   activeTab === 'vocabulary'
                     ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                     : 'bg-white border-2 border-[#e5e5e5] border-b-4 hover:bg-gray-50 text-brand-dark'
@@ -13709,7 +14978,7 @@ startxref
 
               <button
                 onClick={() => setActiveTab('sentence')}
-                className={`px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[105px] sm:min-w-0 px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
                   activeTab === 'sentence'
                     ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                     : 'bg-white border-2 border-[#e5e5e5] border-b-4 hover:bg-gray-50 text-brand-dark'
@@ -13722,7 +14991,7 @@ startxref
 
               <button
                 onClick={() => setActiveTab('grammar')}
-                className={`px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[105px] sm:min-w-0 px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
                   activeTab === 'grammar'
                     ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                     : 'bg-white border-2 border-[#e5e5e5] border-b-4 hover:bg-gray-50 text-brand-dark'
@@ -13735,7 +15004,7 @@ startxref
 
               <button
                 onClick={() => setActiveTab('quiz')}
-                className={`px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
+                className={`flex-1 shrink-0 whitespace-nowrap min-w-[105px] sm:min-w-0 px-3 py-3 rounded-2xl font-sans font-black text-xs transition-transform active:translate-y-0.5 text-center flex items-center justify-center gap-1.5 ${
                   activeTab === 'quiz'
                     ? 'bg-brand-purple text-white border-b-4 border-brand-purple-shadow'
                     : 'bg-white border-2 border-[#e5e5e5] border-b-4 hover:bg-gray-50 text-brand-dark'
@@ -13751,7 +15020,9 @@ startxref
             <div className="mt-4">
               {activeTab === 'vocabulary' && activeLesson && (
                 <VocabularyView
+                  key={`vocab-lesson-${activeLesson.id}`}
                   lessonId={activeLesson.id}
+                  activeLesson={activeLesson}
                   onWordMastered={handleToggleMasteredWord}
                   masteredWords={progress.masteredWords}
                   audioSpeedIndex={audioSpeedIndex}
@@ -14368,8 +15639,8 @@ startxref
 
       </main>
 
-      {/* Pinned Bottom Navigation Tab Bar */}
-      <div id="bottom-tab-bar" className="fixed bottom-0 left-0 right-0 sm:bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[500px] sm:rounded-2xl sm:border sm:border-gray-150 sm:shadow-xl bg-white border-t border-gray-200 z-50 h-16 flex items-center justify-around px-3 select-none shadow-[0_-4px_16px_rgba(0,0,0,0.04)] pb-safe">
+      {/* Primary mobile navigation; floats as the existing compact navigator on wider screens. */}
+      <nav id="bottom-tab-bar" aria-label={activeLessonId !== null ? 'Lesson navigation' : 'Primary navigation'} className={`fixed bottom-0 left-0 right-0 sm:bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[500px] sm:rounded-2xl sm:border sm:border-gray-150 sm:shadow-xl bg-white/95 backdrop-blur-xl border-t border-gray-200 z-50 mobile-bottom-nav items-start sm:items-center justify-around px-2 sm:px-3 select-none shadow-[0_-4px_16px_rgba(0,0,0,0.08)] ${activeLessonId === null ? 'flex lg:hidden' : 'flex'}`}>
         {activeLessonId !== null ? (
           <>
             {/* Back Arrow / Exit */}
@@ -14402,7 +15673,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Vocab</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.vocabulary')}</span>
             </button>
 
             {/* Sentence Module */}
@@ -14423,7 +15694,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Sentence</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.sentences')}</span>
             </button>
 
             {/* Grammar Module */}
@@ -14444,7 +15715,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Grammar</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.grammar')}</span>
             </button>
 
             {/* Quiz Module */}
@@ -14465,7 +15736,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Quiz</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.quiz')}</span>
             </button>
           </>
         ) : (
@@ -14488,7 +15759,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Path</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.path')}</span>
             </button>
 
             {/* Notebook */}
@@ -14509,7 +15780,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Notebook</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.notebook')}</span>
             </button>
 
             {/* Courses */}
@@ -14530,7 +15801,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Courses</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.courses')}</span>
             </button>
 
             {/* Profile */}
@@ -14551,7 +15822,7 @@ startxref
                   />
                 )}
               </div>
-              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">Profile</span>
+              <span className="text-[10px] font-sans font-black tracking-tight mt-1 leading-none uppercase">{t('navbar.profile')}</span>
             </button>
 
             {/* Conditional Admin Hub */}
@@ -14578,7 +15849,7 @@ startxref
             )}
           </>
         )}
-      </div>
+      </nav>
 
       <SyncDashboard />
     </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StoreItem } from '../types';
+import { useLanguage } from '../utils/LanguageContext';
 
 interface EbookCardProps {
   item: StoreItem;
@@ -9,6 +10,7 @@ interface EbookCardProps {
 }
 
 export const EbookCard: React.FC<EbookCardProps> = React.memo(({ item, currentUser, onUnlock, onEnterBook }) => {
+  const { language, t } = useLanguage();
   const [accessStatus, setAccessStatus] = useState<'locked' | 'pending' | 'approved'>('locked');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   
@@ -121,7 +123,7 @@ export const EbookCard: React.FC<EbookCardProps> = React.memo(({ item, currentUs
     } else if (item.pdfDownloadUrl) {
       window.open(item.pdfDownloadUrl, '_blank');
     } else {
-      alert("Download link is not available right now. Please contact support.");
+      alert(language === 'my' ? 'ဒေါင်းလုဒ်လင့်ခ် မရရှိသေးပါ။ အကူအညီဌာနကို ဆက်သွယ်ပါ။' : 'The download link is not available. Please contact support.');
     }
   };
 
@@ -175,20 +177,20 @@ export const EbookCard: React.FC<EbookCardProps> = React.memo(({ item, currentUs
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-250'
                   : 'bg-blue-50 text-blue-700 border-blue-200'
               }`}>
-                {isFree ? 'FREE PDF DOWNLOAD' : 'PREMIUM STUDY BOOK'}
+                {isFree ? t('resources.free_pdf') : t('resources.premium_companion')}
               </span>
             </div>
             <h3 className="font-sans font-black text-sm sm:text-base text-slate-800 leading-snug">
-              {item.name}
+              {language === 'my' ? (item.nameMm || item.name) : item.name}
             </h3>
-            <p className="text-xs font-extrabold text-brand-purple mt-0.5">
+            <p className={`text-xs font-extrabold text-brand-purple mt-0.5 ${language === 'my' ? 'hidden' : ''}`}>
               {item.nameMm}
             </p>
           </div>
 
           <div className="text-xs text-brand-muted space-y-1 my-1 leading-relaxed text-left">
-            <p className="font-semibold">{item.description}</p>
-            {item.descriptionMm && (
+            <p className="font-semibold">{language === 'my' ? (item.descriptionMm || item.description) : item.description}</p>
+            {language === 'en' && item.descriptionMm && (
               <p className="text-[11px] text-slate-500 italic">{item.descriptionMm}</p>
             )}
           </div>
@@ -196,50 +198,40 @@ export const EbookCard: React.FC<EbookCardProps> = React.memo(({ item, currentUs
 
         <div className="flex items-center justify-between gap-3 pt-3 mt-4 border-t border-slate-100">
           <div className="text-left select-none">
-            <span className="text-[7.5px] text-brand-muted block font-extrabold uppercase leading-none">Price Tag</span>
-            <span className="text-xs font-black text-brand-purple block mt-0.5">
-              {isFree ? 'FREE' : `${item.price.toLocaleString()} MMK`}
+            <span className="text-[7.5px] text-brand-muted block font-black uppercase tracking-wider leading-none">{t('resources.pricing')}</span>
+            <span className={`text-xs sm:text-sm font-sans font-black block mt-0.5 ${isFree ? 'text-emerald-600' : 'text-brand-purple'}`}>
+              {isFree ? t('common.free') : `${item.price.toLocaleString()} MMK`}
             </span>
           </div>
 
-          <div className="flex gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {isLoading ? (
-              <div className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-sans font-black uppercase tracking-wider border-b-4 border-slate-200 flex items-center gap-1 shrink-0">
-                <span>Loading...</span>
+              <div className="px-3 py-2 bg-slate-100 text-slate-400 rounded-2xl text-[10px] font-sans font-black uppercase tracking-wider flex items-center gap-1 shrink-0">
+                <span>{t('common.loading')}</span>
               </div>
             ) : (
               <>
-                {accessStatus === 'locked' && (
+                <button
+                  onClick={() => {
+                    if (isFree || accessStatus === 'approved') {
+                      onEnterBook(item);
+                    } else {
+                      onUnlock(item);
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-gradient-to-r from-brand-purple to-[#7a42c4] hover:brightness-105 text-white rounded-2xl text-xs font-sans font-black uppercase tracking-wider hover:shadow-md cursor-pointer transition-all active:scale-95 border-b-4 border-brand-purple-shadow flex items-center gap-1.5 shrink-0 shadow-xs"
+                >
+                  {isFree || accessStatus === 'approved' ? `📖 ${t('ebooks.enter_book')}` : `🔒 ${t('ebooks.unlock')}`}
+                </button>
+
+                {(isFree || accessStatus === 'approved') && (item.googleDriveLink || item.pdfDownloadUrl) && (
                   <button
-                    onClick={() => onUnlock(item)}
-                    className="px-3 py-1.5 bg-gradient-to-r from-brand-purple to-brand-purple/95 text-white rounded-xl text-[10px] font-sans font-black uppercase tracking-wider hover:shadow-lg cursor-pointer border-b-4 border-brand-purple-shadow flex items-center gap-1 shrink-0"
+                    onClick={handleDownload}
+                    className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-2xl text-xs font-sans font-black uppercase tracking-wider cursor-pointer transition-all active:scale-95 flex items-center gap-1 shrink-0"
+                    title={t('common.download')}
                   >
-                    🔒 Unlock eBook
+                    📥 PDF
                   </button>
-                )}
-                {accessStatus === 'pending' && (
-                  <button
-                    disabled
-                    className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-xl text-[10px] font-sans font-black uppercase tracking-wider border-b-4 border-amber-200 flex items-center gap-1 shrink-0 cursor-not-allowed opacity-80"
-                  >
-                    ⏳ PENDING APPROVAL
-                  </button>
-                )}
-                {accessStatus === 'approved' && (
-                  <>
-                    <button
-                      onClick={handleDownload}
-                      className="px-3 py-1.5 bg-gradient-to-r from-[#00875a] to-[#00a36c] text-white rounded-xl text-[10px] font-sans font-black uppercase tracking-wider hover:shadow-md cursor-pointer border-b-4 border-[#006644] flex items-center gap-1.5 shrink-0"
-                    >
-                      📥 DOWNLOAD EBOOK
-                    </button>
-                    <button
-                      onClick={() => onEnterBook(item)}
-                      className="px-3 py-1.5 bg-gradient-to-r from-brand-purple to-[#7a42c4] text-white rounded-xl text-[10px] font-sans font-black uppercase tracking-wider hover:shadow-md cursor-pointer border-b-4 border-brand-purple-shadow flex items-center gap-1.5 shrink-0"
-                    >
-                      <span>📖 Read Online</span>
-                    </button>
-                  </>
                 )}
               </>
             )}

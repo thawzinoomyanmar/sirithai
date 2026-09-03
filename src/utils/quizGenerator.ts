@@ -151,7 +151,8 @@ export function expandLessonQuizzes(allLessons: Lesson[]): Lesson[] {
     const generatedQuestions: QuizQuestion[] = [];
     
     // Seed for deterministic generation matching lesson ID
-    let seed = lesson.id * 100;
+    const numId = typeof lesson.id === 'number' ? lesson.id : (parseInt(String(lesson.id).replace(/\D/g, '')) || 1);
+    let seed = numId * 100;
 
     const addQuestionSafely = (q: QuizQuestion) => {
       // Avoid raw duplicate prompts

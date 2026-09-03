@@ -12,10 +12,13 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
   try {
     const { results } = await db.prepare(`
-      SELECT c.*, uc.created_at AS purchased_at, uc.id AS enrollment_id, uc.status AS enrollment_status
+      SELECT c.*, uc.course_id AS access_course_id,
+             COALESCE(c.id, uc.course_id) AS id,
+             uc.created_at AS purchased_at, uc.id AS enrollment_id, uc.status AS enrollment_status
       FROM user_courses uc
-      INNER JOIN courses c ON uc.course_id = c.id
-      WHERE uc.user_id = ? AND LOWER(uc.status) IN ('approved', 'completed', 'active')
+      LEFT JOIN courses c ON LOWER(uc.course_id) = LOWER(c.id)
+      WHERE LOWER(uc.user_id) = LOWER(?)
+        AND LOWER(uc.status) IN ('approved', 'completed', 'active')
       ORDER BY uc.created_at DESC
     `).bind(userId).all();
     return jsonResponse({ success: true, data: results || [], userId, count: results?.length || 0 });

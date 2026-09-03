@@ -9,6 +9,7 @@ async function readLessons(db: D1Database) {
       l.course_id,
       l.title_thai,
       l.title_phonetic,
+      l.title_myanmar_phonetic,
       l.title_english,
       l.title_myanmar,
       l.description_english,
@@ -29,7 +30,7 @@ async function readLessons(db: D1Database) {
     results = res.results || [];
   } catch (err1) {
     try {
-      const res = await db.prepare('SELECT id, course_id, title_thai, title_phonetic, title_english, title_myanmar, created_at FROM lessons').all();
+      const res = await db.prepare('SELECT id, course_id, title_thai, title_phonetic, title_myanmar_phonetic, title_english, title_myanmar, created_at FROM lessons').all();
       results = res.results || [];
     } catch (err2) {
       console.error("D1 readLessons error:", err2);
@@ -51,6 +52,8 @@ async function readLessons(db: D1Database) {
       courseId: row.course_id || 'course-basic',
       titleThai: row.title_thai || '',
       titlePhonetic: row.title_phonetic || '',
+      titleMyanmarPhonetic: row.title_myanmar_phonetic || '',
+      title_myanmar_phonetic: row.title_myanmar_phonetic || '',
       titleEnglish: row.title_english || '',
       titleMyanmar: row.title_myanmar || '',
       title_myanmar: row.title_myanmar || '',
@@ -124,7 +127,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       }
     }
 
-    const [lessons, courses, grammar, alphabet, vocabulary, vocabCategories, appData, rawOrientation, rawGrammarExt, rawDialogue, rawConversation] = await Promise.all([
+    const [lessons, courses, grammar, alphabet, vocabulary, vocabCategories, appData, rawOrientation, rawGrammarExt, rawDialogue, rawConversation, rawStoreItems, audioEbooks, audioTracks] = await Promise.all([
       readLessons(db).catch(() => []),
       safeAll(db, 'SELECT * FROM courses ORDER BY created_at ASC', 'SELECT * FROM courses'),
       safeAll(db, 'SELECT * FROM grammar_chapters ORDER BY chapter_number ASC', 'SELECT * FROM grammar_chapters'),
@@ -136,7 +139,33 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       safeAll(db, 'SELECT * FROM grammar_ext ORDER BY chapter_number ASC, order_index ASC'),
       safeAll(db, 'SELECT * FROM dialogue ORDER BY chapter_number ASC, order_index ASC'),
       safeAll(db, 'SELECT * FROM conversation ORDER BY chapter_number ASC, order_index ASC'),
+      safeAll(db, 'SELECT * FROM store_items ORDER BY order_index ASC, created_at DESC'),
+      safeAll(db, 'SELECT * FROM audio_ebooks ORDER BY created_at DESC'),
+      safeAll(db, 'SELECT * FROM audio_tracks ORDER BY order_index ASC, track_number ASC', 'SELECT * FROM audio_tracks ORDER BY track_number ASC'),
     ]);
+
+    const storeItems = rawStoreItems.map((row: any) => {
+      let content: any = {};
+      if (row.content_json) {
+        try { content = typeof row.content_json === 'string' ? JSON.parse(row.content_json) : row.content_json; } catch { content = {}; }
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        nameMm: row.name_mm || row.name,
+        type: row.type || 'e-book',
+        description: row.description || '',
+        descriptionMm: row.description_mm || '',
+        price: Number(row.price || 0),
+        currency: row.currency || 'MMK',
+        popular: Boolean(row.popular),
+        courseId: row.course_id || undefined,
+        pdfFileName: row.pdf_file_name || undefined,
+        pdfDownloadUrl: row.pdf_download_url || undefined,
+        googleDriveLink: row.google_drive_link || undefined,
+        ...content
+      };
+    });
 
     const orientation = (rawOrientation || []).map((row: any) => {
       let parsedSections = [];
@@ -226,6 +255,9 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         vocabulary,
         vocab_categories: vocabCategories,
         app_data: appData,
+        store_items: storeItems,
+        audio_ebooks: audioEbooks,
+        audio_tracks: audioTracks,
       },
     });
   } catch (error) {

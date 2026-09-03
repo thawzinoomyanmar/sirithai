@@ -1,31 +1,52 @@
 {
+  "app": { "name": "SIRI Thai Language", "tagline": "Thai Language Learning", "switch_language": "Switch language", "language_name": "English" },
+  "common": {
+    "back": "Back", "close": "Close", "clear": "Clear", "loading": "Loading…", "search": "Search",
+    "open": "Open", "download": "Download", "open_download": "Open / Download", "free": "Free", "premium": "Premium",
+    "locked": "Locked", "unlocked": "Unlocked", "no_data": "No data available", "try_again": "Try again",
+    "previous": "Previous", "next": "Next", "page_of": "Page {{current}} of {{total}}", "categories": "{{count}} categories"
+  },
+  "auth": {
+    "sign_in": "Sign in", "sign_out": "Sign out", "profile": "Profile", "administrator": "Administrator",
+    "login_required": "Please sign in to access premium courses."
+  },
   "navbar": {
-    "basic_course": "Basic Course",
-    "advanced_course": "Advanced Course",
-    "alphabet_guide": "Alphabet Guide",
-    "grammar_manual": "Grammar Manual",
-    "vocab_book": "Vocab Book",
-    "course_store": "Course Store"
+    "basic_course": "Basic", "advanced_course": "Advanced", "resources": "Resources", "ebooks": "Ebooks", "notebook": "Notebook",
+    "alphabet_guide": "Alphabet Guide", "grammar_manual": "Grammar Manual", "vocab_book": "Vocab Book", "course_store": "Course Store",
+    "orientation": "Orientation", "audio_ebooks": "Audio books", "path": "Learning", "courses": "Courses", "profile": "Profile",
+    "vocabulary": "Vocabulary", "sentences": "Sentences", "grammar": "Grammar", "quiz": "Quiz"
   },
-  "course_common": {
-    "buy_now": "Buy Now",
-    "enroll_now": "Enroll Now",
-    "study_lesson": "STUDY LESSON",
-    "lesson_label": "LESSON",
-    "locked": "Locked",
-    "unlocked": "Unlocked",
-    "score": "SCORE"
+  "courses": {
+    "course": "Course", "syllabus_lessons": "Syllabus Lessons", "lessons_range": "Lessons {{from}} to {{to}} of {{total}}",
+    "vocab_book": "Vocab Book", "buy_now": "Buy now", "enroll_now": "Enroll now", "advanced_locked": "Advanced Course Locked",
+    "advanced_locked_detail": "Purchase the Advanced Course to unlock Lessons 33 through 43 with full interactive study materials."
   },
-  "lock_screen": {
-    "title": "Advanced Course Locked",
-    "subtitle": "Purchase the Advanced Course to unlock Lessons 33 through 43 with full interactive study materials.",
-    "buy_button": "🛒 Buy Advanced Course (135,000 MMK)"
+  "lesson": { "label": "Lesson", "score": "Score", "study": "Study lesson", "complete": "Complete", "pronunciation": "Pronunciation" },
+  "resources": {
+    "heading": "Course Companion Resources & PDFs", "open_sample": "Open sample PDF", "free_pdf": "Free PDF",
+    "premium_companion": "Premium companion", "pricing": "Pricing", "study_interactive": "Study interactive",
+    "unlock": "Unlock resource", "default_description": "Study worksheets and practice guides designed for {{course}}."
+  },
+  "ebooks": { "heading": "Ebooks & Textbooks Library", "enter_book": "Open book", "unlock": "Unlock book" },
+  "vocabulary": {
+    "heading": "Classroom Vocabulary Book", "subtitle": "Learn useful vocabulary by category", "loading": "Loading vocabulary…",
+    "empty_help": "Please check your internet connection and try again.",
+    "search_placeholder": "Search by Thai, English, Myanmar, or pronunciation",
+    "no_results": "No results found", "search_help": "Try a simpler search or choose another category.",
+    "copy_hint": "Double-click Thai text in a card to highlight and copy it.", "offline_ready": "Vocabulary is available offline"
+  },
+  "alphabet": {
+    "consonants": "Consonants", "vowels": "Vowels", "search_placeholder": "Search letters, meanings, or pronunciation",
+    "initial_sound": "Initial sound", "final_sound": "Final sound", "meaning": "Meaning",
+    "myanmar_meaning": "Myanmar meaning", "myanmar_phonetic": "Myanmar pronunciation"
   },
   "checkout": {
-    "title": "Enrollment Portal",
-    "pending_approval": "Registration Pending Approval",
-    "admin_24h_notice": "Admin will respond and approve within 24 hours",
-    "submit_order": "Submit Order",
-    "thank_you": "Thank You for Your Order!"
+    "title": "Enrollment Portal", "pending_approval": "Registration pending approval",
+    "admin_24h_notice": "An administrator will review your request within 24 hours.",
+    "submit_order": "Submit order", "thank_you": "Thank you for your order!"
+  },
+  "sync": {
+    "engine": "Sync engine", "connectivity": "Connectivity", "online": "Online mode (Cloud sync)",
+    "offline": "Offline mode (local storage only)", "action": "Sync with Cloud", "logs": "Sync activity"
   }
 }

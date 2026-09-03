@@ -8,16 +8,21 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  resetKey: number;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  declare public props: Props;
+  declare public setState: (state: Partial<State> | ((previousState: State) => Partial<State>)) => void;
+
   public state: State = {
     hasError: false,
     error: null,
-    errorInfo: null
+    errorInfo: null,
+    resetKey: 0
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error, errorInfo: null };
   }
 
@@ -25,6 +30,15 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("Uncaught React Error Boundary Exception:", error, errorInfo);
     this.setState({ error, errorInfo });
   }
+
+  private handleTryAgain = () => {
+    this.setState((previousState) => ({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      resetKey: previousState.resetKey + 1
+    }));
+  };
 
   private handleReload = () => {
     window.location.reload();
@@ -40,10 +54,10 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
-          <div className="bg-white border-2 border-red-100 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-lg text-center space-y-4">
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto text-3xl font-black">
-              ⚠️
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans select-none">
+          <div className="bg-white border-2 border-purple-100 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-lg text-center space-y-4">
+            <div className="w-16 h-16 bg-purple-50 text-brand-purple rounded-2xl flex items-center justify-center mx-auto text-3xl font-black border border-purple-100">
+              ⚡
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
@@ -51,34 +65,41 @@ export class ErrorBoundary extends Component<Props, State> {
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-600 font-semibold leading-relaxed">
-              An unhandled rendering exception occurred. We have isolated the issue to protect your session.
+              A temporary rendering notice was captured. You can click <strong>Try Again</strong> to resume your session immediately.
             </p>
 
             {this.state.error && (
-              <div className="bg-slate-100 p-3.5 rounded-xl text-left font-mono text-[11px] text-red-600 overflow-x-auto max-h-36 border border-slate-200">
+              <div className="bg-slate-50 p-3.5 rounded-xl text-left font-mono text-[11px] text-purple-700 overflow-x-auto max-h-32 border border-slate-200/80">
                 {this.state.error.toString()}
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <button
+                onClick={this.handleTryAgain}
+                className="flex-1 py-3 px-4 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-xl font-sans font-black text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
+              >
+                ✨ Try Again
+              </button>
               <button
                 onClick={this.handleReload}
-                className="flex-1 py-3 px-4 bg-brand-purple hover:bg-brand-purple-hover text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95"
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
               >
-                🔄 Reload Application
-              </button>
-              <button
-                onClick={this.handleResetStorage}
-                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-all"
-              >
-                🧹 Clear Local Cache
+                🔄 Reload Page
               </button>
             </div>
+            
+            <button
+              onClick={this.handleResetStorage}
+              className="text-[10px] text-slate-400 hover:text-red-500 font-bold uppercase tracking-wider pt-1 transition-colors cursor-pointer block mx-auto"
+            >
+              🧹 Clear Storage Cache
+            </button>
           </div>
         </div>
       );
     }
 
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }

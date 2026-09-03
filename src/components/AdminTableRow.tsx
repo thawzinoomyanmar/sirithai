@@ -5,7 +5,7 @@ import { PurchaseOrder } from '../types';
 interface AdminTableRowProps {
   order: PurchaseOrder;
   onViewDetails: (order: PurchaseOrder) => void;
-  onApprove: (orderId: string, itemName: string, username: string) => void;
+  onApprove: (orderId: string, itemName: string, username: string, courseId?: string) => void;
   onReject: (orderId: string) => void;
   onDelete: (orderId: string, e: React.MouseEvent) => void;
 }
@@ -56,7 +56,7 @@ export const AdminTableRow: React.FC<AdminTableRowProps> = React.memo(({
           {order.status === 'pending' && (
             <>
               <button
-                onClick={() => onApprove(order.id, order.itemName, order.username)}
+                onClick={() => onApprove(order.id, order.itemName, order.username, order.courseId)}
                 className="px-2.5 py-1 bg-brand-green text-white text-[9.5px] font-black uppercase rounded-lg hover:opacity-90 cursor-pointer shadow-3xs"
                 title="Mark order as Completed"
               >

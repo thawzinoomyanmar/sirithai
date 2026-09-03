@@ -35,6 +35,9 @@ export interface LocalUserProfile {
 export interface LocalTransaction {
   id: string;
   user_id: string;
+  course_id?: string;
+  item_name?: string;
+  item_type?: string;
   amount: number;
   status: string; // 'pending' | 'success' | 'failed'
   transaction_proof_url: string | null;
@@ -99,4 +102,3 @@ localDB.version(3).stores({
   lessons: '++id, course_id, title_thai, title_phonetic, title_english, title_myanmar',
   alphabet: '++id, type, character, name_thai, name_phonetic'
 });
-

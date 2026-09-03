@@ -1,32 +1,42 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import enTranslations from '../locales/en.json';
 import mmTranslations from '../locales/mm.json';
-import thTranslations from '../locales/th.json';
 
-export type Language = 'mm' | 'my' | 'en' | 'th';
+export type Language = 'my' | 'en';
+export type TranslationParams = Record<string, string | number>;
 
 interface LanguageContextProps {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: string) => string;
+  t: (key: string, params?: TranslationParams) => string;
 }
 
 const LanguageContext = createContext<LanguageContextProps | undefined>(undefined);
 
 const translations: Record<string, any> = {
   en: enTranslations,
-  mm: mmTranslations,
   my: mmTranslations,
-  th: thTranslations,
 };
+
+function normalizeLanguage(value: string | null): Language {
+  return value === 'en' ? 'en' : 'my';
+}
+
+function resolveTranslation(language: Language, key: string): string {
+  const read = (source: any): unknown => key.split('.').reduce(
+    (current: any, part) => current && typeof current === 'object' ? current[part] : undefined,
+    source,
+  );
+  const localized = read(translations[language]);
+  if (typeof localized === 'string') return localized;
+  const englishFallback = read(translations.en);
+  return typeof englishFallback === 'string' ? englishFallback : key;
+}
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('user-lang') || localStorage.getItem('app_language');
-    if (saved === 'en' || saved === 'mm' || saved === 'my' || saved === 'th') {
-      return saved as Language;
-    }
-    return 'mm';
+    return normalizeLanguage(saved);
   });
 
   const setLanguage = (lang: Language) => {
@@ -35,27 +45,18 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('app_language', lang);
   };
 
-  const t = (key: string): string => {
-    const keys = key.split('.');
-    let current: any = translations[language] || translations['mm'];
-    for (const k of keys) {
-      if (current && typeof current === 'object' && k in current) {
-        current = current[k];
-      } else {
-        // Fallback to Myanmar
-        let fallback: any = translations['mm'];
-        for (const fk of keys) {
-          if (fallback && typeof fallback === 'object' && fk in fallback) {
-            fallback = fallback[fk];
-          } else {
-            return key;
-          }
-        }
-        return typeof fallback === 'string' ? fallback : key;
-      }
-    }
-    return typeof current === 'string' ? current : key;
-  };
+  useEffect(() => {
+    document.documentElement.lang = language === 'my' ? 'my' : 'en';
+    document.documentElement.dir = 'ltr';
+  }, [language]);
+
+  const t = useCallback((key: string, params: TranslationParams = {}): string => {
+    const value = resolveTranslation(language, key);
+    return Object.entries(params).reduce(
+      (text, [name, replacement]) => text.replaceAll(`{{${name}}}`, String(replacement)),
+      value,
+    );
+  }, [language]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>

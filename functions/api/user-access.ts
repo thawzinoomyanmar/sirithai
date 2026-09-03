@@ -46,35 +46,28 @@ export async function onRequestGet(context: any) {
         ORDER BY created_at DESC 
         LIMIT 1
       `;
-      const resultTx = await db.prepare(sqlTx).bind(userId, courseId, courseId, courseId).first();
+      const resultTx: any = await db.prepare(sqlTx).bind(userId, courseId, courseId, courseId).first();
+      let resultUC: any = null;
+      try {
+        resultUC = await db.prepare(`
+          SELECT status FROM user_courses
+          WHERE LOWER(user_id) = LOWER(?) AND LOWER(course_id) = LOWER(?)
+          ORDER BY created_at DESC LIMIT 1
+        `).bind(userId, courseId).first();
+      } catch {
+        // Older databases may not have the access table yet.
+      }
 
-      if (resultTx) {
-        if (resultTx.status === 'approved' || resultTx.status === 'completed') {
+      const transactionStatus = String(resultTx?.status || '').toLowerCase();
+      const enrollmentStatus = String(resultUC?.status || '').toLowerCase();
+      if (['approved', 'completed', 'active'].includes(transactionStatus) ||
+          ['approved', 'completed', 'active'].includes(enrollmentStatus)) {
           accessStatus = 'approved';
-        } else if (resultTx.status === 'pending') {
+      } else if (transactionStatus === 'pending' || enrollmentStatus === 'pending') {
           accessStatus = 'pending';
-        } else if (resultTx.status === 'rejected') {
+      } else if (['rejected', 'cancelled'].includes(transactionStatus) ||
+                 ['rejected', 'cancelled'].includes(enrollmentStatus)) {
           accessStatus = 'rejected';
-        }
-      } else {
-        // Fallback check user_courses table
-        try {
-          const sqlUC = `
-            SELECT status FROM user_courses 
-            WHERE LOWER(user_id) = LOWER(?) AND LOWER(course_id) = LOWER(?)
-            ORDER BY created_at DESC LIMIT 1
-          `;
-          const resultUC = await db.prepare(sqlUC).bind(userId, courseId).first();
-          if (resultUC) {
-            if (resultUC.status === 'approved' || resultUC.status === 'completed') {
-              accessStatus = 'approved';
-            } else if (resultUC.status === 'pending') {
-              accessStatus = 'pending';
-            }
-          }
-        } catch {
-          // ignore table missing error
-        }
       }
 
       return jsonResponse({

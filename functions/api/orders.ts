@@ -21,6 +21,8 @@ async function ensureTransactionsTable(db: any) {
     `).run();
 
     const columnsToAdd = [
+      'course_id TEXT',
+      'slip_image TEXT',
       'item_name TEXT',
       'item_type TEXT',
       'currency TEXT DEFAULT \'MMK\'',
@@ -83,6 +85,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
       const mappedOrders = (results || []).map((row: any) => ({
         id: row.id,
+        course_id: row.course_id || null,
+        courseId: row.course_id || undefined,
         user_id: row.user_id,
         userId: row.user_id,
         username: row.user_id || 'Student',
@@ -125,6 +129,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     if (method === 'POST') {
       const id = (body.id && String(body.id).trim()) || `ORD-${Math.floor(10000 + Math.random() * 90000)}`;
       const user_id = body.username || body.user_id || body.userId || 'Student';
+      const course_id = body.courseId || body.course_id || null;
       const item_name = body.itemName || body.item_name || 'Thai Learning Resource';
       const item_type = body.itemType || body.item_type || 'e-book';
       const amount = parseFloat(body.priceAmount ?? body.amount ?? 0);
@@ -154,10 +159,11 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
       const sql = `
         INSERT INTO transactions (
-          id, user_id, item_name, item_type, amount, currency, payment_method, status, transaction_proof_url, admin_notes, student_phone, student_email
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, user_id, course_id, item_name, item_type, amount, currency, payment_method, status, transaction_proof_url, admin_notes, student_phone, student_email
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           user_id = excluded.user_id,
+          course_id = excluded.course_id,
           item_name = excluded.item_name,
           item_type = excluded.item_type,
           amount = excluded.amount,
@@ -171,7 +177,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       `;
 
       await db.prepare(sql).bind(
-        id, user_id, item_name, item_type, amount, currency, payment_method, status, proof_url, admin_notes, student_phone, student_email
+        id, user_id, course_id, item_name, item_type, amount, currency, payment_method, status, proof_url, admin_notes, student_phone, student_email
       ).run();
 
       return jsonResponse({
@@ -179,6 +185,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         message: 'Order created/updated in Cloudflare D1',
         order: {
           id,
+          courseId: course_id || undefined,
           username: user_id,
           itemName: item_name,
           itemType: item_type,

@@ -16,7 +16,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   try {
     if (method === 'GET') {
       const url = new URL(req.url);
-      const userId = url.searchParams.get('userId');
+      const userId = url.searchParams.get('userId') || url.searchParams.get('user_id') || url.searchParams.get('id');
 
       if (!userId) {
         return jsonResponse({ success: false, error: 'User ID is required' }, 400);
@@ -33,9 +33,10 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
     if (method === 'POST') {
       const body = await req.json() as any;
-      const { userId, progressData } = body;
+      const userId = body.userId || body.user_id || body.id;
+      const pData = body.progressData || body.progress;
 
-      if (!userId || !progressData) {
+      if (!userId || !pData) {
         return jsonResponse({ success: false, error: 'userId and progressData are required' }, 400);
       }
 
@@ -46,7 +47,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         ON CONFLICT(user_id) DO UPDATE SET
           progress_data = excluded.progress_data,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(userId, JSON.stringify(progressData)).run();
+      `).bind(userId, JSON.stringify(pData)).run();
 
       return jsonResponse({ success: true, message: 'Progress saved successfully' });
     }

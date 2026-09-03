@@ -17,27 +17,6 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   }
 
   try {
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS alphabet (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT DEFAULT 'consonant',
-        character TEXT,
-        char TEXT,
-        name_thai TEXT,
-        name_phonetic TEXT,
-        name_myanmar TEXT,
-        class TEXT DEFAULT 'Mid',
-        order_index INTEGER DEFAULT 0
-      )
-    `).run();
-
-    const cols = ['char', 'character', 'name_thai', 'name_phonetic', 'name_myanmar', 'type', 'class', 'order_index'];
-    for (const col of cols) {
-      try {
-        await db.prepare(`ALTER TABLE alphabet ADD COLUMN ${col} TEXT`).run();
-      } catch {}
-    }
-
     if (method === 'POST') {
       const body: any = await req.json().catch(() => ({}));
       const items = Array.isArray(body) ? body : [body];
@@ -47,11 +26,11 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
       for (const item of items) {
         const id = item.id || null;
-        const charVal = item.char || item.character || '';
+        const charVal = item.letter || item.char || item.character || '';
         const type = item.type || 'consonant';
-        const name_thai = item.name_thai || item.name || '';
-        const name_phonetic = item.name_phonetic || item.phonetic || '';
-        const name_myanmar = item.name_myanmar || item.meaning || '';
+        const name_phonetic = item.phonetic || item.name_phonetic || '';
+        const phonetic_mm = item.phonetic_mm || item.myanmar_sound || '';
+        const meaning = item.meaning || item.name_myanmar || '';
         
         let cls = item.class;
         if (!cls) {
@@ -61,9 +40,15 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         }
 
         await db.prepare(`
-          INSERT OR REPLACE INTO alphabet (id, type, character, char, name_thai, name_phonetic, name_myanmar, class, order_index)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(id, type, charVal, charVal, name_thai, name_phonetic, name_myanmar, cls, item.order_index || 0).run();
+          INSERT OR REPLACE INTO alphabet (
+            id, character, char, name_thai, name_phonetic, phonetic_mm, name_myanmar,
+            type, class, order_index, audio_url, image_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          id, charVal, charVal, item.name_thai || item.name || charVal, name_phonetic,
+          phonetic_mm, meaning, type, cls, item.order_index || 0,
+          item.audio_url || null, item.image_url || null
+        ).run();
       }
 
       return jsonResponse({ success: true, message: 'Alphabet record(s) inserted into Cloudflare D1 successfully.' });

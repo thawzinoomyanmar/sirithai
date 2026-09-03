@@ -129,6 +129,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       courseId: lessonRow.course_id || 'course-basic',
       titleThai: lessonRow.title_thai || '',
       titlePhonetic: lessonRow.title_phonetic || '',
+      titleMyanmarPhonetic: lessonRow.title_myanmar_phonetic || '',
+      title_myanmar_phonetic: lessonRow.title_myanmar_phonetic || '',
       titleEnglish: lessonRow.title_english || '',
       titleMyanmar: lessonRow.title_myanmar || '',
       title_myanmar: lessonRow.title_myanmar || '',

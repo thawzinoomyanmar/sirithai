@@ -45,7 +45,7 @@ export interface QuizQuestion {
 }
 
 export interface Lesson {
-  id: number;
+  id: number | string;
   courseId?: string; // Links lesson to specific course (e.g. 'course-basic', 'course-business', 'course-workspace')
   titleThai: string;
   titlePhonetic: string;
@@ -53,12 +53,12 @@ export interface Lesson {
   titleMyanmar: string;
   titleMyanmarPhonetic?: string;
   description?: string;
-  descriptionEnglish: string;
-  descriptionMyanmar: string;
-  dialogue: DialogueLine[];
+  descriptionEnglish?: string;
+  descriptionMyanmar?: string;
+  dialogue?: DialogueLine[];
   wholeDialogueVideoUrl?: string; // Optional Lesson-wide full video for whole dialogue practice
-  grammarNotes: GrammarNote[];
-  quiz: QuizQuestion[];
+  grammarNotes?: GrammarNote[];
+  quiz?: QuizQuestion[];
 }
 
 export interface ProgressState {
@@ -86,12 +86,13 @@ export interface RegisteredUser {
 
 export interface PurchaseOrder {
   id: string;
+  courseId?: string;
   username: string;
   itemName: string;
   itemType: 'e-book' | 'tutoring' | 'vip-package' | 'certificate' | 'course';
   priceAmount: number;
   currency: 'MMK' | 'THB' | 'XP';
-  status: 'pending' | 'completed' | 'cancelled';
+  status: 'pending' | 'approved' | 'completed' | 'cancelled';
   orderDate: string;
   evidenceImage?: string;
   adminNotes?: string;
@@ -182,6 +183,7 @@ export interface VocabItem {
 }
 
 export interface VocabCategory {
+  id?: string;
   name: string;
   icon: string;
   items: VocabItem[];

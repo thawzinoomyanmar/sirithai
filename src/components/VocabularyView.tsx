@@ -6,14 +6,16 @@ import { motion, AnimatePresence } from 'motion/react';
 import { localDB } from '../utils/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
-import { playGlobalAudio, speakGlobalText } from '../utils/audioManager';
+import { playGlobalAudio, speakGlobalText, stopGlobalAudio } from '../utils/audioManager';
 
 interface VocabularyViewProps {
-  lessonId: number;
+  key?: React.Key;
+  lessonId: number | string;
   onWordMastered: (word: string) => void;
   masteredWords: string[];
   audioSpeedIndex: number;
   setAudioSpeedIndex: React.Dispatch<React.SetStateAction<number>>;
+  activeLesson?: any;
 }
 
 export default function VocabularyView({
@@ -21,15 +23,134 @@ export default function VocabularyView({
   onWordMastered,
   masteredWords,
   audioSpeedIndex,
-  setAudioSpeedIndex
+  setAudioSpeedIndex,
+  activeLesson
 }: VocabularyViewProps) {
   const [selectedWord, setSelectedWord] = useState<WordBreakdown | null>(null);
 
   const liveWords = useLiveQuery(() => localDB.words_and_audio.toArray());
 
+  useEffect(() => () => {
+    stopGlobalAudio();
+  }, []);
+
   const words = useMemo(() => {
+    // 1. Check if liveWords has entries matching this specific lessonId
     if (liveWords && liveWords.length > 0) {
-      return liveWords.map(w => ({
+      const matchingLiveWords = liveWords.filter((w: any) =>
+        String(w.lesson_id) === String(lessonId) ||
+        String(w.category_id) === String(lessonId) ||
+        w.category === `lesson-${lessonId}` ||
+        w.category === `Lesson ${lessonId}`
+      );
+
+      if (matchingLiveWords.length > 0) {
+        return matchingLiveWords.map(w => ({
+          thai: w.thai_text || '',
+          english: w.english_text || '',
+          myanmar: w.myanmar_text || '',
+          phonetic: w.phonetic || '',
+          myanmarPhonetic: w.phonetic_mm || undefined,
+          partOfSpeech: w.category || 'vocab',
+          audioUrl: w.audio_url || undefined,
+          pdf_drive_url: w.pdf_drive_url
+        })) as WordBreakdown[];
+      }
+    }
+
+    // 2. Extract words directly from activeLesson dialogue and grammar notes if available
+    if (activeLesson) {
+      const extractedWords: WordBreakdown[] = [];
+      const seenThai = new Set<string>();
+
+      if (Array.isArray(activeLesson.vocab) && activeLesson.vocab.length > 0) {
+        activeLesson.vocab.forEach((v: any) => {
+          if (v.thai && !seenThai.has(v.thai)) {
+            seenThai.add(v.thai);
+            extractedWords.push({
+              thai: v.thai,
+              phonetic: v.phonetic || '',
+              english: v.english || '',
+              myanmar: v.myanmar || '',
+              myanmarPhonetic: v.phoneticMm || v.phonetic_mm,
+              partOfSpeech: v.partOfSpeech || 'vocab',
+              audioUrl: v.audioUrl || v.audio_url
+            });
+          }
+        });
+      }
+
+      if (Array.isArray(activeLesson.dialogue)) {
+        activeLesson.dialogue.forEach((line: any) => {
+          if (Array.isArray(line.words)) {
+            line.words.forEach((w: any) => {
+              if (w && w.thai && !seenThai.has(w.thai)) {
+                seenThai.add(w.thai);
+                extractedWords.push(w);
+              }
+            });
+          }
+        });
+      }
+
+      if (Array.isArray(activeLesson.grammarNotes)) {
+        activeLesson.grammarNotes.forEach((note: any) => {
+          if (Array.isArray(note.examples)) {
+            note.examples.forEach((ex: any) => {
+              if (ex && ex.thai && !seenThai.has(ex.thai)) {
+                seenThai.add(ex.thai);
+                extractedWords.push({
+                  thai: ex.thai,
+                  phonetic: ex.phonetic || '',
+                  english: ex.english || '',
+                  myanmar: ex.myanmar || '',
+                  partOfSpeech: 'example'
+                });
+              }
+            });
+          }
+        });
+      }
+
+      if (extractedWords.length > 0) {
+        return extractedWords;
+      }
+    }
+
+    // 3. Fallback: custom local storage for this specific lessonId
+    const saved = localStorage.getItem(`thai_custom_vocab_${lessonId}`);
+    let loadedWords: WordBreakdown[] = [];
+    const savedPdfVocab = localStorage.getItem('thai_pdf_vocabulary');
+    if (savedPdfVocab) {
+      try {
+        const parsed = JSON.parse(savedPdfVocab);
+        if (parsed[lessonId] && Array.isArray(parsed[lessonId]) && parsed[lessonId].length > 0) {
+          loadedWords = parsed[lessonId];
+        }
+      } catch (e) {}
+    }
+    if (loadedWords.length === 0 && saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedWords = parsed;
+        }
+      } catch (e) {
+        console.error("Error loading custom vocabulary:", e);
+      }
+    }
+    if (loadedWords.length > 0) {
+      return loadedWords;
+    }
+
+    // 4. Partition liveWords per lessonId so different lessons display distinct items
+    if (liveWords && liveWords.length > 0) {
+      const numId = typeof lessonId === 'number' ? lessonId : parseInt(String(lessonId).replace(/\D/g, '') || '1', 10);
+      const pageSize = 8;
+      const startIndex = ((numId - 1) * pageSize) % liveWords.length;
+      const sliced = liveWords.slice(startIndex, startIndex + pageSize);
+      const fallbackList = sliced.length > 0 ? sliced : liveWords.slice(0, pageSize);
+      return fallbackList.map(w => ({
         thai: w.thai_text || '',
         english: w.english_text || '',
         myanmar: w.myanmar_text || '',
@@ -40,39 +161,17 @@ export default function VocabularyView({
         pdf_drive_url: w.pdf_drive_url
       })) as WordBreakdown[];
     }
-    
-    // Fallback
-    const saved = localStorage.getItem(`thai_custom_vocab_${lessonId}`);
-    let loadedWords: WordBreakdown[] = [];
-    const savedPdfVocab = localStorage.getItem('thai_pdf_vocabulary');
-    if (savedPdfVocab) {
-      try {
-        const parsed = JSON.parse(savedPdfVocab);
-        loadedWords = parsed[lessonId] || [];
-      } catch (e) {}
-    }
-    if (saved) {
-      try {
-        loadedWords = JSON.parse(saved);
-      } catch (e) {
-        console.error("Error loading custom vocabulary:", e);
-      }
-    }
-    return loadedWords;
-  }, [liveWords, lessonId]);
+
+    return [];
+  }, [liveWords, lessonId, activeLesson]);
 
   useEffect(() => {
     if (words.length > 0) {
-      setSelectedWord(prev => {
-        if (!prev || !words.some(w => w.thai === prev.thai)) {
-          return words[0];
-        }
-        return prev;
-      });
+      setSelectedWord(words[0]);
     } else {
       setSelectedWord(null);
     }
-  }, [words]);
+  }, [lessonId, activeLesson, words]);
 
   
   // Trainer state
@@ -115,6 +214,10 @@ export default function VocabularyView({
     const rates = [0.85, 0.7, 0.5];
     const rate = rates[nextIndex];
     speakGlobalText(text, 'th-TH', rate);
+  };
+
+  const playLessonAudio = (audioUrl: string) => {
+    playGlobalAudio(audioUrl);
   };
 
   // Generate vocabulary matching questions
@@ -292,13 +395,13 @@ export default function VocabularyView({
                             </div>
 
                             {/* Myanmar translation directly below */}
-                            <div className="text-xs sm:text-[13.5px] font-sans mt-1 font-bold text-slate-700 leading-tight truncate">
+                            <div className="text-base sm:text-lg font-sans mt-1.5 font-bold text-slate-700 leading-relaxed">
                               {w.myanmar}
                             </div>
 
                             {w.phonetic && (
-                              <div className="text-[10px] font-sans text-slate-400 font-bold mt-1.5">
-                                အသံထွက်: <span className="text-slate-500 bg-slate-50 px-1 py-0.5 rounded text-[9px] font-extrabold">{getMyanmarPhonetic(w.phonetic)}</span>
+                              <div className="text-sm sm:text-base font-sans text-emerald-700 font-bold mt-2">
+                                အသံထွက်: <span className="bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg font-black">{w.myanmarPhonetic || getMyanmarPhonetic(w.phonetic)}</span>
                               </div>
                             )}
                           </div>
@@ -344,7 +447,7 @@ export default function VocabularyView({
                         <div className="text-3xl font-sans font-black text-brand-purple uppercase">{selectedWord.thai}</div>
                         <div className="text-xs font-mono text-[#58cc02] font-black tracking-wide mt-1">({selectedWord.phonetic})</div>
                         {selectedWord.phonetic && (
-                          <div className="text-[11px] font-sans text-emerald-600 font-bold mt-1">အသံထွက်: {getMyanmarPhonetic(selectedWord.phonetic)}</div>
+                          <div className="text-base font-sans text-emerald-700 font-black mt-2">အသံထွက်: {selectedWord.myanmarPhonetic || getMyanmarPhonetic(selectedWord.phonetic)}</div>
                         )}
                       </div>
 
@@ -395,7 +498,15 @@ export default function VocabularyView({
                         {selectedWord.audioUrl && (
                           <div className="duo-card p-4 bg-white border-brand-border shadow-[0_2px_0_0_#efefef]">
                             <div className="text-[10px] uppercase font-sans text-brand-muted font-bold tracking-wider mb-2">Native Audio Track</div>
-                            <audio controls src={selectedWord.audioUrl} className="w-full h-8" />
+                            <button
+                              type="button"
+                              onClick={() => playLessonAudio(selectedWord.audioUrl!)}
+                              className="w-full px-4 py-3 rounded-xl bg-brand-purple text-white font-sans text-xs font-extrabold flex items-center justify-center gap-2 border-b-4 border-brand-purple-shadow active:translate-y-0.5 active:border-b-2"
+                              title="Play this lesson's native audio track"
+                            >
+                              <Volume2 className="w-4 h-4" />
+                              Play Audio • အသံဖွင့်မည်
+                            </button>
                           </div>
                         )}
                         {selectedWord.pdf_drive_url && (
@@ -463,8 +574,8 @@ export default function VocabularyView({
                     ({quizQuestions[currentQuizIdx].word.phonetic})
                   </div>
                   {quizQuestions[currentQuizIdx].word.phonetic && (
-                    <div className="text-[11px] font-sans text-emerald-600 font-bold mt-1.5 bg-white/70 px-3 py-0.5 rounded-full select-none">
-                      အသံထွက်: {getMyanmarPhonetic(quizQuestions[currentQuizIdx].word.phonetic)}
+                    <div className="text-base font-sans text-emerald-700 font-black mt-2 bg-white/70 px-3 py-1 rounded-full select-none">
+                      အသံထွက်: {quizQuestions[currentQuizIdx].word.myanmarPhonetic || getMyanmarPhonetic(quizQuestions[currentQuizIdx].word.phonetic)}
                     </div>
                   )}
                   

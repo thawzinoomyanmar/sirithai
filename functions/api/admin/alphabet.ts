@@ -33,21 +33,28 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       const body = await req.json() as any;
       const record = body.record || body;
 
-      const letter = record.letter;
+      const letter = record.char || record.character || record.letter;
       if (!letter || String(letter).trim() === '') {
         return jsonResponse({ success: false, error: 'Thai letter character (letter) is required' }, 400);
       }
 
-      const phonetic = record.phonetic || '';
+      const phonetic = record.name_phonetic || record.phonetic || '';
       const phonetic_mm = record.phonetic_mm || record.phoneticMm || '';
-      const meaning = record.meaning || '';
-      const category = record.category || 'High Class Consonants';
+      const meaning = record.name_myanmar || record.meaning || '';
+      const type = record.type || 'consonant';
+      const cls = record.class || 'Mid';
       const audio_url = record.audio_url || record.audioUrl || '';
+      const image_url = record.image_url || record.imageUrl || '';
 
       const res = await db.prepare(`
-        INSERT INTO alphabet (letter, phonetic, phonetic_mm, meaning, category, audio_url)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(letter, phonetic, phonetic_mm, meaning, category, audio_url).run();
+        INSERT INTO alphabet (
+          character, char, name_thai, name_phonetic, phonetic_mm, name_myanmar,
+          type, class, order_index, audio_url, image_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        letter, letter, record.name_thai || letter, phonetic, phonetic_mm, meaning,
+        type, cls, record.order_index || 0, audio_url, image_url
+      ).run();
 
       const lastId = res.meta?.lastRowId;
 
@@ -57,12 +64,16 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         id: lastId,
         alphabet: {
           id: lastId,
-          letter,
-          phonetic,
+          char: letter,
+          character: letter,
+          name_thai: record.name_thai || letter,
+          name_phonetic: phonetic,
           phonetic_mm,
-          meaning,
-          category,
-          audio_url
+          name_myanmar: meaning,
+          type,
+          class: cls,
+          audio_url,
+          image_url
         }
       });
     }
@@ -78,20 +89,30 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
       await db.prepare(`
         UPDATE alphabet SET
-          letter = COALESCE(?, letter),
-          phonetic = COALESCE(?, phonetic),
+          character = COALESCE(?, character),
+          char = COALESCE(?, char),
+          name_thai = COALESCE(?, name_thai),
+          name_phonetic = COALESCE(?, name_phonetic),
           phonetic_mm = COALESCE(?, phonetic_mm),
-          meaning = COALESCE(?, meaning),
-          category = COALESCE(?, category),
-          audio_url = COALESCE(?, audio_url)
+          name_myanmar = COALESCE(?, name_myanmar),
+          type = COALESCE(?, type),
+          class = COALESCE(?, class),
+          order_index = COALESCE(?, order_index),
+          audio_url = COALESCE(?, audio_url),
+          image_url = COALESCE(?, image_url)
         WHERE id = ?
       `).bind(
-        record.letter || null,
-        record.phonetic || null,
+        record.character || record.char || record.letter || null,
+        record.char || record.character || record.letter || null,
+        record.name_thai || null,
+        record.name_phonetic || record.phonetic || null,
         record.phonetic_mm || record.phoneticMm || null,
-        record.meaning || null,
-        record.category || null,
+        record.name_myanmar || record.meaning || null,
+        record.type || null,
+        record.class || null,
+        record.order_index ?? null,
         record.audio_url || record.audioUrl || null,
+        record.image_url || record.imageUrl || null,
         id
       ).run();
 

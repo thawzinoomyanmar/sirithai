@@ -560,8 +560,8 @@ export function expandLessonGrammar(allLessons: Lesson[]): Lesson[] {
       // Use the fully tailored, hand-crafted distinct records for Lesson 1, 2, and 3
       lesson.grammarNotes = [...GRAMMAR_DATABASE[lessonId]];
     } else {
-      // Use the dynamic custom-aligned curriculum card generator for remaining lessons, keeping them all unique
-      lesson.grammarNotes = generateDynamicGrammarForLesson(lessonId);
+      const numLessonId = typeof lessonId === 'number' ? lessonId : (parseInt(String(lessonId).replace(/\D/g, '')) || 1);
+      lesson.grammarNotes = generateDynamicGrammarForLesson(numLessonId);
     }
     
     // Safety check: ensure each node has exactly 6 examples

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, 
@@ -17,6 +17,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { getMyanmarPhonetic } from '../utils/sentenceUtils';
+import { useLanguage } from '../utils/LanguageContext';
 
 export interface AlphabetItem {
   id?: number | string;
@@ -35,6 +36,8 @@ export interface AlphabetItem {
   type?: string;
   class?: string;
   order_index?: number;
+  image_url?: string | null;
+  audio_url?: string | null;
 }
 
 export interface ConsonantInfo {
@@ -51,6 +54,8 @@ export interface ConsonantInfo {
   soundFinal: string;
   myanmarSound: string;
   type?: string;
+  imageUrl?: string;
+  audioUrl?: string;
 }
 
 export interface VowelInfo {
@@ -67,6 +72,8 @@ export interface VowelInfo {
   exampleEnglish: string;
   type?: string;
   class?: string;
+  imageUrl?: string;
+  audioUrl?: string;
 }
 
 interface AlphabetGuideProps {
@@ -74,6 +81,8 @@ interface AlphabetGuideProps {
 }
 
 export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
+  const { t } = useLanguage();
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   // Navigation states
   const [activeSubTab, setActiveSubTab] = useState<'consonants' | 'vowels'>('consonants');
   const [studyMode, setStudyMode] = useState<'grid' | 'flashcard'>('grid');
@@ -112,7 +121,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                 const char = item.char || item.character || item.letter || '';
                 const nameThai = item.name_thai || item.name || char;
                 const namePhonetic = item.name_phonetic || item.phonetic || item.namePhonetic || '';
-                const nameMyanmar = item.name_myanmar || item.meaning || item.phonetic_mm || item.nameMyanmar || '';
+                const nameMyanmar = item.name_myanmar || item.meaning || item.nameMyanmar || '';
                 const rawClass = item.class || 'Mid';
                 const formattedClass = rawClass.charAt(0).toUpperCase() + rawClass.slice(1).toLowerCase();
 
@@ -129,7 +138,9 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                   type: 'consonant',
                   soundInitial: item.sound_initial || item.soundInitial || (namePhonetic ? namePhonetic.split(' ')[0] : ''),
                   soundFinal: item.sound_final || item.soundFinal || (namePhonetic && namePhonetic.split(' ').length > 1 ? namePhonetic.split(' ')[1] : '-'),
-                  myanmarSound: item.myanmar_sound || nameMyanmar || namePhonetic
+                  myanmarSound: item.phonetic_mm || item.myanmar_sound || getMyanmarPhonetic(namePhonetic),
+                  imageUrl: item.image_url || item.imageUrl || '',
+                  audioUrl: item.audio_url || item.audioUrl || ''
                 };
               });
 
@@ -138,7 +149,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
               .map((item: any) => {
                 const char = item.char || item.character || item.letter || '';
                 const namePhonetic = item.name_phonetic || item.phonetic || item.namePhonetic || '';
-                const nameMyanmar = item.name_myanmar || item.meaning || item.phonetic_mm || item.nameMyanmar || '';
+                const nameMyanmar = item.name_myanmar || item.meaning || item.nameMyanmar || '';
                 const rawClass = item.class || 'Short';
                 const len = rawClass.toLowerCase() === 'long' ? 'long' : 'short';
 
@@ -151,10 +162,12 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                   name_myanmar: nameMyanmar,
                   length: len,
                   type: 'vowel',
-                  myanmarSound: item.myanmar_sound || nameMyanmar,
+                  myanmarSound: item.phonetic_mm || item.myanmar_sound || getMyanmarPhonetic(namePhonetic),
                   exampleThai: item.example_thai || item.exampleThai || char,
                   examplePhonetic: item.example_phonetic || item.examplePhonetic || namePhonetic,
-                  exampleEnglish: item.example_english || item.exampleEnglish || item.name_english || ''
+                  exampleEnglish: item.example_english || item.exampleEnglish || item.name_english || '',
+                  imageUrl: item.image_url || item.imageUrl || '',
+                  audioUrl: item.audio_url || item.audioUrl || ''
                 };
               });
 
@@ -382,8 +395,20 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
   const handlePlayItemAudio = (item: any) => {
     if (!item) return;
     const textToSpeak = formatThaiForTTS(item);
-    handleSpeak(textToSpeak);
+    const audioUrl = item.audioUrl || item.audio_url;
+
+    if (!audioUrl) {
+      handleSpeak(textToSpeak);
+      return;
+    }
+
+    activeAudioRef.current?.pause();
+    const audio = new Audio(audioUrl);
+    activeAudioRef.current = audio;
+    audio.play().catch(() => handleSpeak(textToSpeak));
   };
+
+  useEffect(() => () => activeAudioRef.current?.pause(), []);
 
   const handleSpeak = (text: string) => {
     let textToSpeak = text;
@@ -488,7 +513,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
             }`}
           >
             <Layers className="w-4 h-4" />
-            <span>Consonants • ဗျည်း (၄၄)</span>
+            <span>{t('alphabet.consonants')} (44)</span>
           </button>
           
           <button
@@ -503,7 +528,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
             }`}
           >
             <Clock className="w-4 h-4" />
-            <span>Vowels • သရ (၃၂)</span>
+            <span>{t('alphabet.vowels')} ({vowels.length || 32})</span>
           </button>
         </div>
 
@@ -541,7 +566,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-brand-muted" />
             <input
               type="text"
-              placeholder="Search / ရှာဖွေရန်..."
+              placeholder={t('alphabet.search_placeholder')}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -626,20 +651,27 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                         key={item.char}
                         onClick={() => {
                           setSelectedConsonant(item);
-                          handleSpeak(item.name);
+                          handlePlayItemAudio(item);
                         }}
-                        className={`duo-card p-3 flex flex-col items-center justify-between border-b-4 transition-all aspect-square outline-none bg-white cursor-pointer ${
+                        className={`duo-card p-2.5 flex flex-col items-center justify-between border-b-4 transition-all min-h-[154px] outline-none bg-white cursor-pointer overflow-hidden ${
                           isSelected
                             ? 'border-brand-purple border-2 scale-[1.02] shadow-xs'
                             : 'border-gray-150 hover:border-[#58cc02] hover:border-2 hover:scale-[1.02]'
                         }`}
                       >
-                        <div className="text-2xl sm:text-3xl font-sans font-black text-brand-dark">
-                          {item.char}
-                        </div>
+                        {item.imageUrl ? (
+                          <div className="w-full aspect-[4/3] min-h-0 overflow-hidden rounded-lg bg-gray-50">
+                            <img src={item.imageUrl} alt={item.name} className="block w-full h-full object-contain" loading="lazy" />
+                          </div>
+                        ) : (
+                          <div className="text-2xl sm:text-3xl font-sans font-black text-brand-dark">{item.char}</div>
+                        )}
                         <div className="text-center w-full mt-1">
-                          <div className="text-[10px] font-sans font-black leading-tight text-brand-muted">
+                          <div className="text-xs sm:text-sm font-sans font-black leading-tight text-brand-muted">
                             {item.namePhonetic}
+                          </div>
+                          <div className="text-sm sm:text-base font-sans font-black leading-snug text-brand-purple mt-1">
+                            {item.myanmarSound}
                           </div>
                           <div className={`text-[9px] font-sans font-extrabold mt-0.5 px-1 py-0.5 rounded ${metaCss.bg}`}>
                             {item.class.toUpperCase()}
@@ -685,10 +717,10 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
               {/* Right dedicated detailed inspector card */}
               <div className="lg:col-span-5">
                 {selectedConsonant ? (
-                  <div className="duo-card p-6 bg-white border-2 border-gray-100 sticky top-22 flex flex-col justify-between min-h-[380px] h-full shadow-3xs">
+                  <div className="duo-card p-4 sm:p-6 bg-white border-2 border-gray-100 sticky top-22 flex flex-col justify-between min-h-[380px] h-full shadow-3xs overflow-hidden">
                     <div>
                       {/* Class Badge */}
-                      <div className="flex justify-between items-center mb-5 border-b border-gray-100 pb-3">
+                      <div className="flex flex-wrap justify-between items-center gap-2 mb-5 border-b border-gray-100 pb-3">
                         <span className="text-[10px] font-sans font-black text-brand-purple bg-brand-purple-light/40 px-2.5 py-1 rounded-full uppercase border border-brand-purple/20">
                           Consonant Inspector
                         </span>
@@ -702,44 +734,46 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                       </div>
 
                       {/* Main Big Letter Panel */}
-                      <div className="flex items-start gap-4 mb-5">
-                        <div className="w-24 h-24 sm:w-28 sm:h-28 bg-[#f8f6fe] border-2 border-brand-purple/10 rounded-2xl flex items-center justify-center text-5xl sm:text-6xl font-sans font-black text-brand-purple shadow-3xs relative select-all">
-                          {selectedConsonant.char}
+                      <div className="grid grid-cols-1 sm:grid-cols-[minmax(180px,46%)_minmax(0,1fr)] items-center gap-4 sm:gap-5 mb-5">
+                        <div className="w-full max-w-sm mx-auto aspect-[4/3] bg-[#f8f6fe] border-2 border-brand-purple/10 rounded-2xl flex items-center justify-center text-5xl sm:text-6xl font-sans font-black text-brand-purple shadow-3xs relative select-all overflow-hidden">
+                          {selectedConsonant.imageUrl ? (
+                            <img src={selectedConsonant.imageUrl} alt={selectedConsonant.name} className="block w-full h-full object-contain" />
+                          ) : selectedConsonant.char}
                         </div>
-                        <div className="flex-1 min-w-0 pt-1">
-                          <h3 className="text-xl font-sans font-black text-brand-dark tracking-tight flex items-center gap-1">
+                        <div className="min-w-0 text-center sm:text-left">
+                          <h3 className="text-xl sm:text-2xl font-sans font-black text-brand-dark tracking-tight">
                             {selectedConsonant.name}
                           </h3>
-                          <p className="text-xs font-mono font-black text-emerald-600 tracking-wide mt-1">
+                          <p className="text-sm sm:text-base font-mono font-black text-emerald-600 tracking-wide mt-1">
                             ({selectedConsonant.namePhonetic})
                           </p>
-                          <div className="text-xs font-sans font-bold text-brand-muted mt-2">
-                            Meaning: <span className="text-brand-dark font-extrabold">{selectedConsonant.nameEnglish}</span>
+                          <div className="text-sm font-sans font-bold text-brand-muted mt-2">
+                            {t('alphabet.meaning')}: <span className="text-brand-dark font-extrabold">{selectedConsonant.nameEnglish}</span>
                           </div>
-                          <div className="text-xs font-sans font-bold text-brand-muted mt-1 leading-relaxed">
-                            Meaning (Burmese): <span className="text-brand-purple font-extrabold">{selectedConsonant.nameMyanmar}</span>
+                          <div className="text-sm font-sans font-bold text-brand-muted mt-1 leading-relaxed">
+                            {t('alphabet.myanmar_meaning')}: <span className="text-brand-purple font-extrabold">{selectedConsonant.nameMyanmar}</span>
                           </div>
                         </div>
                       </div>
 
                       {/* Sound breakdown details */}
-                      <div className="grid grid-cols-2 gap-3 mb-6 bg-gray-50 p-3.5 border border-gray-150-dark border-dashed rounded-xl">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-gray-50 p-3 sm:p-3.5 border border-gray-150-dark border-dashed rounded-xl">
                         <div className="text-center p-2 rounded-lg bg-white border border-gray-100 shadow-3xs">
-                          <div className="text-[10px] font-sans font-black text-brand-muted uppercase tracking-wider">Initial Sound</div>
-                          <div className="text-base font-sans font-black text-[#58cc02] mt-0.5">"{selectedConsonant.soundInitial}"</div>
+                          <div className="text-[10px] font-sans font-black text-brand-muted uppercase tracking-wider">{t('alphabet.initial_sound')}</div>
+                          <div className="text-xl sm:text-2xl font-sans font-black text-[#58cc02] mt-1">"{selectedConsonant.soundInitial}"</div>
                         </div>
                         <div className="text-center p-2 rounded-lg bg-white border border-gray-100 shadow-3xs">
-                          <div className="text-[10px] font-sans font-black text-brand-muted uppercase tracking-wider">Final Sound</div>
-                          <div className="text-base font-sans font-black text-indigo-500 mt-0.5">"{selectedConsonant.soundFinal}"</div>
+                          <div className="text-[10px] font-sans font-black text-brand-muted uppercase tracking-wider">{t('alphabet.final_sound')}</div>
+                          <div className="text-xl sm:text-2xl font-sans font-black text-indigo-500 mt-1">"{selectedConsonant.soundFinal}"</div>
                         </div>
                       </div>
 
                       {/* Myanmar Sound and Pronunciation equivalent */}
                       <div className="p-3 bg-brand-purple-light/20 border border-brand-purple/10 rounded-xl mb-4">
                         <div className="text-[10px] font-sans font-black text-brand-muted">
-                          MYANMAR PHONETIC EQUIVALENT • မြန်မာ့အသံထွက်ဗေဒစနစ်
+                          {t('alphabet.myanmar_phonetic')}
                         </div>
-                        <div className="text-sm font-sans font-black text-brand-dark mt-1">
+                        <div className="text-xl sm:text-2xl font-sans font-black text-brand-purple mt-2 leading-relaxed">
                           {selectedConsonant.myanmarSound}
                         </div>
                       </div>
@@ -813,7 +847,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                          </button>
 
                          <button
-                           onClick={() => handleSpeak(selectedConsonant.name)}
+                           onClick={() => handlePlayItemAudio(selectedConsonant)}
                            className="py-3 px-3 border-2 border-brand-purple/25 bg-[#fbfaff] hover:bg-[#f6f2ff] text-brand-purple font-sans font-black text-xs uppercase rounded-2xl transition-all cursor-pointer h-12 flex items-center gap-1.5 justify-center"
                            title="Hear Native Speaker"
                          >
@@ -884,10 +918,12 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                         key={item.char}
                         initial={{ scale: 0.9, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="w-32 h-32 bg-[#f8f6fe] border-3 border-brand-purple/20 rounded-3xl flex items-center justify-center text-6xl sm:text-7xl font-sans font-black text-brand-purple shadow-md relative group select-all cursor-pointer hover:bg-brand-purple-light/35 transition-colors"
-                        onClick={() => handleSpeak(item.name)}
+                        className="w-full max-w-sm aspect-[4/3] bg-[#f8f6fe] border-3 border-brand-purple/20 rounded-3xl flex items-center justify-center text-6xl sm:text-7xl font-sans font-black text-brand-purple shadow-md relative group select-all cursor-pointer hover:bg-brand-purple-light/35 transition-colors overflow-hidden"
+                        onClick={() => handlePlayItemAudio(item)}
                       >
-                        {item.char}
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.name} className="block w-full h-full object-contain rounded-3xl" />
+                        ) : item.char}
                         <div className="absolute bottom-2 right-2 p-1 bg-white border border-gray-150 rounded-lg text-brand-muted shadow-3xs group-hover:text-brand-purple transition-colors">
                           <Volume2 className="w-3.5 h-3.5" />
                         </div>
@@ -896,7 +932,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                       <h2 className="text-2xl sm:text-3xl font-sans font-black text-brand-dark mt-4">
                         {item.name}
                       </h2>
-                      <p className="text-sm font-mono font-black text-emerald-600 mt-1 tracking-wider">
+                      <p className="text-base sm:text-lg font-mono font-black text-emerald-600 mt-1 tracking-wider">
                         phonetic: {item.namePhonetic}
                       </p>
                     </div>
@@ -916,8 +952,11 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
 
                       <div className="border-t border-gray-200/60 my-2 pt-2 text-center">
                         <span className="text-[10px] font-sans text-brand-muted font-bold uppercase block">Phonetic Meaning • မြန်မာ့အဓိပ္ပာယ်</span>
-                        <span className="text-xs sm:text-sm font-sans font-black text-brand-dark mt-1 block">
-                          {item.nameEnglish} • <span className="text-brand-purple">{item.nameMyanmar}</span> [{item.myanmarSound}]
+                        <span className="text-sm sm:text-base font-sans font-black text-brand-dark mt-1 block">
+                          {item.nameEnglish} • <span className="text-brand-purple">{item.nameMyanmar}</span>
+                        </span>
+                        <span className="text-lg sm:text-xl font-sans font-black text-brand-purple mt-1 block leading-relaxed">
+                          {item.myanmarSound}
                         </span>
                       </div>
                     </div>
@@ -933,7 +972,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                       </button>
 
                       <button
-                        onClick={() => handleSpeak(item.name)}
+                        onClick={() => handlePlayItemAudio(item)}
                         className="p-3 bg-brand-purple text-white hover:bg-brand-purple-dark rounded-2xl shadow-3xs flex items-center justify-center transition-all cursor-pointer"
                         title="Say aloud"
                       >
@@ -975,18 +1014,21 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                           setSelectedVowel(item);
                           handlePlayItemAudio(item);
                         }}
-                        className={`duo-card p-3 flex flex-col items-center justify-between border-b-4 transition-all min-h-[120px] outline-none bg-white cursor-pointer ${
+                        className={`duo-card p-3 flex flex-col items-center justify-between border-b-4 transition-all min-h-[150px] outline-none bg-white cursor-pointer ${
                           isSelected
                             ? 'border-brand-purple border-2 scale-[1.02] shadow-xs'
                             : 'border-gray-150 hover:border-[#58cc02] hover:border-2 hover:scale-[1.02]'
                         }`}
                       >
-                        <div className="text-2xl font-sans font-black tracking-widest text-brand-purple">
+                        <div className="text-3xl sm:text-4xl font-sans font-black tracking-widest text-brand-purple">
                           {item.char}
                         </div>
                         <div className="text-center w-full mt-1">
-                          <div className="text-[11px] font-sans font-black text-brand-dark mt-0.5">
+                          <div className="text-sm font-sans font-black text-brand-dark mt-1">
                             /{item.phonetic}/
+                          </div>
+                          <div className="text-base sm:text-lg font-sans font-black text-indigo-600 mt-1 leading-snug">
+                            {item.myanmarSound}
                           </div>
                           <div className="text-[10px] font-sans font-bold leading-tight text-brand-muted max-w-full truncate">
                             Word: <span className="font-sans font-black text-emerald-500">{item.exampleThai}</span> ({item.examplePhonetic})
@@ -1036,14 +1078,14 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                           {selectedVowel.char}
                         </div>
                         <div className="flex-1 min-w-0 pt-1">
-                          <h3 className="text-xl font-sans font-black text-brand-dark tracking-tight">
+                          <h3 className="text-xl sm:text-2xl font-sans font-black text-brand-dark tracking-tight">
                             Phonetic: /{selectedVowel.phonetic}/
                           </h3>
-                          <div className="text-xs font-sans font-bold text-brand-muted mt-2">
+                          <div className="text-sm font-sans font-bold text-brand-muted mt-2">
                             Description: <span className="text-brand-dark font-extrabold">{selectedVowel.english}</span>
                           </div>
-                          <div className="text-xs font-sans font-bold text-brand-muted mt-1 leading-relaxed">
-                            မြန်မာအသံထွက်: <span className="text-indigo-600 font-extrabold">{selectedVowel.myanmarSound}</span>
+                          <div className="text-sm font-sans font-bold text-brand-muted mt-2 leading-relaxed">
+                            မြန်မာအသံထွက်: <span className="block text-xl sm:text-2xl text-indigo-600 font-extrabold mt-1">{selectedVowel.myanmarSound}</span>
                           </div>
                         </div>
                       </div>
@@ -1227,8 +1269,11 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
                       <h2 className="text-2xl sm:text-3xl font-sans font-black text-brand-dark mt-4">
                         /{item.phonetic}/
                       </h2>
-                      <p className="text-sm font-semibold text-brand-muted mt-1 leading-normal text-center">
-                        {item.english} • <span className="text-indigo-600 font-bold">{item.myanmarSound}</span>
+                      <p className="text-base font-semibold text-brand-muted mt-1 leading-normal text-center">
+                        {item.english}
+                      </p>
+                      <p className="text-xl sm:text-2xl text-indigo-600 font-black mt-1 leading-relaxed text-center">
+                        {item.myanmarSound}
                       </p>
                     </div>
 

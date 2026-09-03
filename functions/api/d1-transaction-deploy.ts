@@ -47,6 +47,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         CREATE TABLE IF NOT EXISTS transactions (
           id TEXT PRIMARY KEY,
           user_id TEXT,
+          course_id TEXT,
           item_name TEXT,
           item_type TEXT,
           amount REAL NOT NULL DEFAULT 0.0,
@@ -62,6 +63,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       `).run();
 
       const columnsToAdd = [
+        'course_id TEXT',
         'item_name TEXT',
         'item_type TEXT',
         'currency TEXT DEFAULT \'MMK\'',
@@ -76,13 +78,28 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           // ignore if column exists
         }
       }
+
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS user_courses (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          course_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `).run();
     } catch (schemaErr: any) {
       console.warn("D1 transactions table schema check note:", schemaErr?.message || schemaErr);
     }
 
     const finalId = (body.id && String(body.id).trim()) || `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
-    const user_id = body.user_id ? String(body.user_id).trim() : null;
-    const course_id = body.course_id ? String(body.course_id).trim() : '';
+    const user_id = body.user_id || body.userId || body.username
+      ? String(body.user_id || body.userId || body.username).trim()
+      : null;
+    const course_id = body.course_id || body.courseId || body.itemId
+      ? String(body.course_id || body.courseId || body.itemId).trim()
+      : '';
     const parsedAmount = parseFloat(body.amount);
     const amount = isNaN(parsedAmount) ? 0.0 : parsedAmount;
     const payment_method = body.payment_method ? String(body.payment_method).trim() : 'direct';
@@ -97,14 +114,16 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
 
     if (user_id && user_id !== 'anonymous') {
       try {
-        const checkSql = `
-          SELECT id, status FROM transactions 
-          WHERE LOWER(user_id) = LOWER(?) 
-          AND (amount = ? OR (id = ? AND ? != '')) 
-          AND status IN ('approved', 'completed', 'pending') 
-          LIMIT 1;
-        `;
-        const existingRecord = await db.prepare(checkSql).bind(user_id, amount, course_id, course_id).first();
+        const checkSql = course_id
+          ? `SELECT id, status FROM transactions
+             WHERE LOWER(user_id) = LOWER(?) AND LOWER(course_id) = LOWER(?)
+               AND LOWER(status) IN ('approved', 'completed', 'pending') LIMIT 1`
+          : `SELECT id, status FROM transactions
+             WHERE LOWER(user_id) = LOWER(?) AND amount = ?
+               AND LOWER(status) IN ('approved', 'completed', 'pending') LIMIT 1`;
+        const existingRecord = course_id
+          ? await db.prepare(checkSql).bind(user_id, course_id).first()
+          : await db.prepare(checkSql).bind(user_id, amount).first();
         if (existingRecord) {
           return jsonResponse({
             success: false,
@@ -120,10 +139,11 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     }
 
     const sql = `
-      INSERT INTO transactions (id, user_id, item_name, item_type, amount, currency, payment_method, status, transaction_proof_url, admin_notes, student_phone, student_email)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO transactions (id, user_id, course_id, item_name, item_type, amount, currency, payment_method, status, transaction_proof_url, admin_notes, student_phone, student_email)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
+        course_id = excluded.course_id,
         item_name = excluded.item_name,
         item_type = excluded.item_type,
         amount = excluded.amount,
@@ -140,6 +160,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     const result = await db.prepare(sql).bind(
       finalId,
       user_id,
+      course_id || null,
       item_name,
       item_type,
       amount,
@@ -152,6 +173,19 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       student_email
     ).run();
 
+    if (user_id && course_id && item_type === 'course') {
+      const enrollmentId = `UC-${user_id}-${course_id}`;
+      await db.prepare(`
+        INSERT INTO user_courses (id, user_id, course_id, status)
+        VALUES (?, ?, ?, 'pending')
+        ON CONFLICT(id) DO UPDATE SET
+          status = CASE
+            WHEN LOWER(user_courses.status) IN ('approved', 'completed', 'active') THEN user_courses.status
+            ELSE 'pending'
+          END
+      `).bind(enrollmentId, user_id, course_id).run();
+    }
+
     return jsonResponse({ 
       success: true, 
       id: finalId,
@@ -159,6 +193,9 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       record: {
         id: finalId,
         user_id,
+        course_id: course_id || null,
+        item_name,
+        item_type,
         amount,
         payment_method,
         status,
