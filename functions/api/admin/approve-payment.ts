@@ -1,4 +1,6 @@
 import { getDB, jsonResponse, handleOptions } from '../dbHelper';
+import { createPaymentStatusLogStatement } from '../paymentService';
+import { recordUserActivity } from '../profileService';
 
 type ApprovalStatus = 'approved' | 'cancelled' | 'pending';
 
@@ -11,6 +13,8 @@ interface ApprovalBody {
   admin_notes?: unknown;
   courseId?: unknown;
   course_id?: unknown;
+  changedBy?: unknown;
+  changed_by?: unknown;
 }
 
 interface TransactionRow {
@@ -19,6 +23,7 @@ interface TransactionRow {
   course_id: string | null;
   item_name: string | null;
   item_type: string | null;
+  status: string | null;
 }
 
 function normalizeStatus(value: unknown): ApprovalStatus | null {
@@ -70,7 +75,7 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     }
 
     const transaction = await db.prepare(
-      'SELECT id, user_id, course_id, item_name, item_type FROM transactions WHERE id = ?'
+      'SELECT id, user_id, course_id, item_name, item_type, status FROM transactions WHERE id = ?'
     ).bind(id).first<TransactionRow>();
 
     if (!transaction) {
@@ -117,40 +122,56 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     const adminNotes = hasAdminNotes
       ? optionalString(body.adminNotes ?? body.admin_notes)
       : null;
+    const changedBy = optionalString(body.changedBy ?? body.changed_by) ||
+      optionalString(req.headers.get('X-Admin-Id')) || 'admin';
 
     const update = hasAdminNotes
       ? db.prepare(`
           UPDATE transactions
-          SET status = ?, admin_notes = ?, course_id = COALESCE(?, course_id)
+          SET status = ?, admin_notes = ?, course_id = COALESCE(?, course_id), updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(status, adminNotes, courseId, id)
       : db.prepare(`
           UPDATE transactions
-          SET status = ?, course_id = COALESCE(?, course_id)
+          SET status = ?, course_id = COALESCE(?, course_id), updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(status, courseId, id);
 
     let results: D1Result[];
     let accessSynchronized = false;
+    const audit = createPaymentStatusLogStatement(db, {
+      transactionId: id,
+      userId: transaction.user_id,
+      previousStatus: transaction.status,
+      newStatus: status,
+      changedBy,
+      reason: adminNotes,
+      metadata: { courseId, accessAction: status === 'approved' ? 'grant' : status === 'cancelled' ? 'revoke' : 'none' },
+    });
 
     if (transaction.user_id && courseId && isCoursePurchase && status === 'approved') {
       const userCourseId = `UC-${transaction.user_id}-${courseId}`;
       const enrollment = db.prepare(`
-        INSERT INTO user_courses (id, user_id, course_id, status)
-        VALUES (?, ?, ?, 'approved')
-        ON CONFLICT(id) DO UPDATE SET status = excluded.status
-      `).bind(userCourseId, transaction.user_id, courseId);
-      results = await db.batch([update, enrollment]);
+        INSERT INTO user_courses (
+          id, user_id, course_id, status, source_transaction_id, enrolled_at, updated_at
+        ) VALUES (?, ?, ?, 'approved', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET
+          status = excluded.status,
+          source_transaction_id = excluded.source_transaction_id,
+          enrolled_at = COALESCE(user_courses.enrolled_at, CURRENT_TIMESTAMP),
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(userCourseId, transaction.user_id, courseId, id);
+      results = await db.batch([update, enrollment, audit]);
       accessSynchronized = results[1]?.success === true;
     } else if (transaction.user_id && courseId && isCoursePurchase && status === 'cancelled') {
       const enrollment = db.prepare(`
-        UPDATE user_courses SET status = 'cancelled'
+        UPDATE user_courses SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ? AND course_id = ?
       `).bind(transaction.user_id, courseId);
-      results = await db.batch([update, enrollment]);
+      results = await db.batch([update, enrollment, audit]);
       accessSynchronized = results[1]?.success === true;
     } else {
-      results = [await update.run()];
+      results = await db.batch([update, audit]);
     }
 
     if (!results[0]?.success || Number(results[0]?.meta?.changes || 0) < 1) {
@@ -163,6 +184,15 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       status,
       accessSynchronized,
     }));
+
+    if (transaction.user_id) {
+      await recordUserActivity(db, {
+        userId: transaction.user_id,
+        activityType: status === 'approved' ? 'enrollment_approved' : `enrollment_${status}`,
+        courseId,
+        metadata: { transactionId: id, accessSynchronized },
+      });
+    }
 
     return jsonResponse({
       success: true,

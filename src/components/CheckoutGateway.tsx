@@ -22,6 +22,7 @@ import { Course, PurchaseOrder, RegisteredUser } from '../types';
 import { localDB } from '../utils/db';
 import { isOnlineSimulated, addSyncLog } from '../utils/syncEngine';
 import { setAuthValue } from '../utils/authStorage';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 // ============================================================================
 // SLEEK MINIMAL BANK LOGOS (INLINE SVGS)
@@ -152,6 +153,40 @@ const DynamicQRCode: React.FC<{ value: string; color: string; brandLabel: string
   );
 };
 
+const KBZPAY_QR_IMAGE = '/kbzpay-qr.png';
+
+const KBZPayQRCode: React.FC = () => {
+  const [imageUnavailable, setImageUnavailable] = useState(false);
+
+  if (imageUnavailable) {
+    return (
+      <div className="w-full min-h-40 rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-col items-center justify-center text-center">
+        <AlertTriangle className="w-6 h-6 text-amber-600 mb-2" />
+        <p className="text-[10px] font-black text-amber-900 uppercase">KBZPay QR image unavailable</p>
+        <p className="text-[9px] text-amber-800 mt-1">Contact the administrator before transferring.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-xl border border-[#005bab]/20 bg-white p-2 shadow-sm">
+      <img
+        src={KBZPAY_QR_IMAGE}
+        alt="KBZPay QR code for U Thaw Zin Oo ending 0772"
+        className="w-full max-h-[330px] object-contain rounded-lg"
+        onError={() => setImageUnavailable(true)}
+      />
+      <a
+        href={KBZPAY_QR_IMAGE}
+        download="sirithai-kbzpay-qr.png"
+        className="mt-2 flex items-center justify-center gap-1 rounded-lg bg-[#005bab] px-3 py-2 text-[10px] font-bold text-white hover:bg-[#004b90]"
+      >
+        Save QR to phone • QR ကိုသိမ်းရန်
+      </a>
+    </div>
+  );
+};
+
 // ============================================================================
 // BANK ACCOUNTS DICTIONARY
 // ============================================================================
@@ -159,11 +194,11 @@ const DynamicQRCode: React.FC<{ value: string; color: string; brandLabel: string
 const BANK_ACCOUNTS = {
   kbzpay: {
     bankName: "KBZPay",
-    accountName: "Kru Jane (Teacher)",
-    accountNumber: "09791112233",
+    accountName: "U Thaw Zin Oo",
+    accountNumber: "******0772",
     qrColor: "#005bab",
-    instruction: "Transfer via KBZPay App or scan this merchant QR.",
-    qrText: "KBZPAY-MERCHANT-8829103982",
+    instruction: "Scan this official KBZPay QR, verify the recipient name, then upload the successful transfer slip.",
+    qrText: "KBZPAY-STATIC-QR",
     logoText: "KBZP",
     description: "Instant zero-fee wallet transfer"
   },
@@ -786,7 +821,7 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                 
                 {/* Bank details info container */}
                 <div className="md:col-span-7 bg-slate-50/50 p-2 sm:p-2.5 rounded-xl border border-slate-100 flex flex-col justify-between gap-1.5">
-                  <div className="flex flex-row md:flex-col items-stretch gap-2.5 justify-between">
+                  <div className={`flex ${gatewayPaymentMethod === 'kbzpay' ? 'flex-col' : 'flex-row md:flex-col'} items-stretch gap-2.5 justify-between`}>
                     <div className="flex-1 space-y-1.5 min-w-0">
                       <div className="space-y-0.5">
                         <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider leading-none">
@@ -841,8 +876,10 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                       </div>
                     </div>
 
-                    <div className="shrink-0 flex items-center justify-center">
-                      <DynamicQRCode value={activeBank.qrText} color={activeBank.qrColor} brandLabel={activeBank.logoText} />
+                    <div className={`${gatewayPaymentMethod === 'kbzpay' ? 'w-full md:w-[210px]' : 'shrink-0'} flex items-center justify-center`}>
+                      {gatewayPaymentMethod === 'kbzpay'
+                        ? <KBZPayQRCode />
+                        : <DynamicQRCode value={activeBank.qrText} color={activeBank.qrColor} brandLabel={activeBank.logoText} />}
                     </div>
                   </div>
                 </div>
@@ -862,7 +899,7 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                       </div>
                     )}
                     <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider leading-none">
-                      Upload Screenshot Slip
+                      Upload Successful Payment Slip
                     </span>
 
                     <div 
@@ -969,7 +1006,13 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
               <div className="pt-2 border-t border-slate-100 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!evidencePreview) {
+                      alert('Please upload your successful payment slip before submitting.\nငွေလွှဲပြီးကြောင်း ပြေစာပုံကို အရင်တင်ပါ။');
+                      fileInputRef.current?.click();
+                      return;
+                    }
+                    setGatewayProcessing(true);
                     const cleanName = (checkoutName || 'Student_' + Math.floor(100 + Math.random() * 900)).trim();
                     let buyerUsername = cleanName;
                     
@@ -1046,11 +1089,6 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                                      currentUser || 
                                      'Student';
 
-                    // Synchronously transition to Step 4!
-                    setGatewayStep(4);
-                    setGatewayProcessing(false);
-                    addSystemLog(buyerUsername, `Submitted payment receipt for ${isEbook ? 'eBook' : 'course'} "${gatewayCourse.name}" (Pending validation)`);
-
                     const executeUpload = async () => {
                       let finalProofUrl = evidencePreview || null;
                       let isSynced = 0;
@@ -1063,11 +1101,10 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                           }
                           
                           addSyncLog('payment', `Ingesting transaction to D1 database...`, 'info');
-                          const response = await fetch('/api/d1-transaction-deploy', {
+                          const response = await sessionCachedFetch('/api/submit-transaction', {
                             method: 'POST',
                             headers: {
-                              'Content-Type': 'application/json',
-                              'X-Static-Admin': 'true'
+                              'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
                               id,
@@ -1076,8 +1113,7 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                               item_name: newOrder.itemName,
                               item_type: newOrder.itemType,
                               amount: gatewayCourse.priceAmount,
-                              payment_method: gatewayPaymentMethod,
-                              status: 'pending',
+                              payment_method: gatewayPaymentMethod === 'kbzpay' ? 'KBZPay' : gatewayPaymentMethod,
                               transaction_proof_url: finalProofUrl,
                               student_phone: gatewayPhone,
                               student_email: gatewayEmail
@@ -1129,7 +1165,16 @@ export const CheckoutGateway: React.FC<CheckoutGatewayProps> = ({
                       return { duplicate: false };
                     };
 
-                    executeUpload();
+                    const uploadResult = await executeUpload();
+                    if (uploadResult.duplicate) {
+                      setOrders(prev => prev.filter(order => order.id !== id));
+                      setGatewayProcessing(false);
+                      alert('သင်သည် ဤသင်တန်းအတွက် ငွေပေးချေမှု တင်ထားပြီးဖြစ်ပါသည်။');
+                      return;
+                    }
+                    setGatewayStep(4);
+                    setGatewayProcessing(false);
+                    addSystemLog(buyerUsername, `Submitted payment receipt for ${isEbook ? 'eBook' : 'course'} "${gatewayCourse.name}" (Pending validation)`);
                   }}
                   disabled={gatewayProcessing}
                   className="flex-1 bg-brand-purple hover:bg-brand-purple/95 disabled:opacity-50 text-white font-sans font-bold text-[11px] py-1.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer uppercase tracking-wider"

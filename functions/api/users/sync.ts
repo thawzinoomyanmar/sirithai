@@ -1,4 +1,5 @@
 import { getDB, jsonResponse, handleOptions } from '../dbHelper';
+import { recordUserActivity } from '../profileService';
 
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   const req = context.request;
@@ -41,19 +42,28 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
     }
 
     await db.prepare(`
-      INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users_profile (
+        id, full_name, email, avatar_url, role, phone, xp, last_active_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         full_name = COALESCE(NULLIF(excluded.full_name, ''), users_profile.full_name),
         email = COALESCE(NULLIF(excluded.email, ''), users_profile.email),
         avatar_url = COALESCE(NULLIF(excluded.avatar_url, ''), users_profile.avatar_url),
         phone = COALESCE(excluded.phone, users_profile.phone),
         xp = COALESCE(excluded.xp, users_profile.xp),
-        role = COALESCE(excluded.role, users_profile.role)
+        role = COALESCE(excluded.role, users_profile.role),
+        last_active_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
     `).bind(userId, name, mail, avatar, userRole, userPhone, userXp).run();
 
     console.log(`Backend Sync Success for User: ${userId}`);
     const existingUser = await db.prepare('SELECT * FROM users_profile WHERE id = ?').bind(userId).first();
+
+    await recordUserActivity(db, {
+      userId,
+      activityType: 'profile_synced',
+      metadata: { source: 'client' },
+    });
 
     return jsonResponse({
       success: true,

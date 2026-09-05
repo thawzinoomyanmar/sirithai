@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { getMyanmarPhonetic } from '../utils/sentenceUtils';
 import { useLanguage } from '../utils/LanguageContext';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 export interface AlphabetItem {
   id?: number | string;
@@ -104,7 +105,7 @@ export default function AlphabetGuide({ speakText }: AlphabetGuideProps) {
   useEffect(() => {
     const fetchAlphabetData = async () => {
       try {
-        const response = await fetch('/api/alphabet');
+        const response = await sessionCachedFetch('/api/alphabet');
         const contentType = response.headers.get('content-type') || '';
         if (response.ok && contentType.includes('application/json')) {
           const resData: any = await response.json();

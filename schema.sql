@@ -8,7 +8,16 @@ CREATE TABLE IF NOT EXISTS users_profile (
     role TEXT DEFAULT 'student',
     phone TEXT,
     xp INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    bio TEXT,
+    preferred_language TEXT NOT NULL DEFAULT 'en',
+    timezone TEXT NOT NULL DEFAULT 'Asia/Yangon',
+    country TEXT,
+    learning_goal TEXT,
+    daily_goal_minutes INTEGER NOT NULL DEFAULT 15 CHECK (daily_goal_minutes BETWEEN 0 AND 1440),
+    streak_days INTEGER NOT NULL DEFAULT 0 CHECK (streak_days >= 0),
+    last_active_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS vocab_categories (
@@ -155,7 +164,21 @@ CREATE TABLE IF NOT EXISTS transactions (
     admin_notes TEXT,
     student_phone TEXT,
     student_email TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payment_status_logs (
+    id TEXT PRIMARY KEY,
+    transaction_id TEXT NOT NULL,
+    user_id TEXT,
+    previous_status TEXT,
+    new_status TEXT NOT NULL,
+    changed_by TEXT,
+    reason TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+      CHECK (json_valid(metadata_json) AND json_type(metadata_json) = 'object'),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS user_courses (
@@ -163,8 +186,50 @@ CREATE TABLE IF NOT EXISTS user_courses (
     user_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    progress_percent REAL NOT NULL DEFAULT 0 CHECK (progress_percent BETWEEN 0 AND 100),
+    completed_lessons INTEGER NOT NULL DEFAULT 0 CHECK (completed_lessons >= 0),
+    total_lessons INTEGER NOT NULL DEFAULT 0 CHECK (total_lessons >= 0),
+    enrolled_at TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    last_accessed_at TEXT,
+    source_transaction_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS user_activity_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users_profile(id) ON DELETE CASCADE,
+    activity_type TEXT NOT NULL CHECK (
+      length(activity_type) BETWEEN 1 AND 64
+      AND activity_type NOT GLOB '*[^a-z0-9_]*'
+    ),
+    course_id TEXT,
+    lesson_id TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+      CHECK (json_valid(metadata_json) AND json_type(metadata_json) = 'object'),
+    occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_profile_email ON users_profile(email);
+CREATE INDEX IF NOT EXISTS idx_users_profile_last_active ON users_profile(last_active_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_courses_user_status_updated ON user_courses(user_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_courses_course_status ON user_courses(course_id, status);
+CREATE INDEX IF NOT EXISTS idx_user_activity_user_occurred ON user_activity_logs(user_id, occurred_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_user_type_occurred ON user_activity_logs(user_id, activity_type, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_course_occurred
+    ON user_activity_logs(course_id, occurred_at DESC) WHERE course_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_transactions_user_created
+    ON transactions(user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_status_created
+    ON transactions(user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_logs_transaction_created
+    ON payment_status_logs(transaction_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_logs_user_created
+    ON payment_status_logs(user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_logs_user_status_created
+    ON payment_status_logs(user_id, new_status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS app_data (
     key TEXT PRIMARY KEY,

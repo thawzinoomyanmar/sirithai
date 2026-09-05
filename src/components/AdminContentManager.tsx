@@ -5,6 +5,7 @@ import {
   Search, Settings2, Shapes, Trash2, X
 } from 'lucide-react';
 import { EbookChapterTransfer } from './EbookChapterTransfer';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'json' | 'url' | 'select';
 
@@ -303,7 +304,7 @@ export function AdminContentManager() {
       const endpoint = editor.mode === 'edit'
         ? `/api/admin/content/${entity}?id=${encodeURIComponent(String(id))}`
         : `/api/admin/content/${entity}`;
-      const response = await fetch(endpoint, {
+      const response = await sessionCachedFetch(endpoint, {
         method: editor.mode === 'edit' ? 'PUT' : 'POST', headers, body: JSON.stringify(requestRecord)
       });
       const payload = await parseResponse(response);
@@ -325,7 +326,7 @@ export function AdminContentManager() {
     setSaving(true);
     setError('');
     try {
-      const response = await fetch(`/api/admin/content/${entity}?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', headers });
+      const response = await sessionCachedFetch(`/api/admin/content/${entity}?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', headers });
       const payload = await parseResponse(response);
       if (!response.ok || !payload.success) throw new Error(payload.error || 'Unable to delete content.');
       setDeleteRecord(null);

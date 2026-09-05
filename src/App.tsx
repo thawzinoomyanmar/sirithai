@@ -29,9 +29,11 @@ import { fetchLessonDetail } from './hooks/useApiData';
 import { playGlobalAudio, speakGlobalText, stopGlobalAudio } from './utils/audioManager';
 import { createWebAudioPlayer, type WebAudioPlayer } from './utils/webAudioPlayer';
 import { openResourceInNewTab } from './utils/resourceLinks';
+import { sessionCachedFetch } from './utils/apiCache';
 import { AudioEbookPlayer } from './components/AudioEbookPlayer';
 import { AdminContentManager } from './components/AdminContentManager';
 import { AdminDataEntryDashboard } from './components/AdminDataEntryDashboard';
+import { LoadingOverlay } from './components/LoadingOverlay';
 
 const dedupeListByContent = (list: any[]) => {
   if (!Array.isArray(list)) return [];
@@ -559,7 +561,7 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
     if (key === 'courses' && Array.isArray(data)) {
       console.log(`Syncing ${data.length} courses to relational D1...`);
       for (const course of data) {
-        await fetch('/api/insert-course', {
+        await sessionCachedFetch('/api/insert-course', {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -572,7 +574,7 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
     } else if (key === 'lessons' && Array.isArray(data)) {
       console.log(`Syncing ${data.length} lessons to relational D1...`);
       for (const lesson of data) {
-        await fetch('/api/insert-lesson', {
+        await sessionCachedFetch('/api/insert-lesson', {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -591,7 +593,7 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
     } else if (key === 'grammar_chapters' && Array.isArray(data)) {
       console.log(`Syncing ${data.length} grammar chapters to relational D1...`);
       for (const chapter of data) {
-        await fetch('/api/insert-grammar', {
+        await sessionCachedFetch('/api/insert-grammar', {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -605,7 +607,7 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
       console.log(`Syncing vocabulary categories items to relational D1...`);
       for (const cat of data) {
         // Sync category metadata first
-        await fetch('/api/vocab-categories', {
+        await sessionCachedFetch('/api/vocab-categories', {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -620,7 +622,7 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
 
         if (!cat.items || !Array.isArray(cat.items)) continue;
         for (const item of cat.items) {
-          await fetch('/api/d1-admin-deploy', {
+          await sessionCachedFetch('/api/d1-admin-deploy', {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -642,7 +644,7 @@ const saveDynamicDataToD1 = async (key: string, data: any) => {
       }
     } else {
       // Fallback/Legacy saving to app_data
-      const response = await fetch('/api/d1-app-data-deploy', {
+      const response = await sessionCachedFetch('/api/d1-app-data-deploy', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -1076,7 +1078,7 @@ export default function App() {
   const hasLoadedD1DataRef = useRef(false);
 
   useEffect(() => {
-    fetch('/api/grammar')
+    sessionCachedFetch('/api/grammar')
       .then(res => res.json())
       .then((data: any) => {
         if (data.success && Array.isArray(data.data)) {
@@ -1103,7 +1105,7 @@ export default function App() {
       })
       .catch(err => console.warn("Notice: Initial grammar_ext fetch:", err));
 
-    fetch('/api/dialogue')
+    sessionCachedFetch('/api/dialogue')
       .then(res => res.json())
       .then((data: any) => {
         if (data.success && Array.isArray(data.data)) {
@@ -1163,7 +1165,7 @@ export default function App() {
       })
       .catch(err => console.warn("Notice: Initial dialogue fetch:", err));
 
-    fetch('/api/conversation')
+    sessionCachedFetch('/api/conversation')
       .then(res => res.json())
       .then((data: any) => {
         if (data.success && Array.isArray(data.data)) {
@@ -1446,7 +1448,7 @@ export default function App() {
       // Dedicated public API fetch for user lessons with required logging
       console.log("Fetching user lessons...");
       try {
-        const lessonsRes = await fetch(`${apiBase}/api/lessons`, { signal: controller.signal });
+        const lessonsRes = await sessionCachedFetch(`${apiBase}/api/lessons`, { signal: controller.signal });
         if (lessonsRes.ok) {
           const lessonsData: any = await lessonsRes.json();
           console.log("User lessons received:", lessonsData);
@@ -1468,7 +1470,7 @@ export default function App() {
       // Dedicated public API fetch for user courses with required logging
       console.log("Fetching user courses...");
       try {
-        const coursesRes = await fetch(`${apiBase}/api/courses`, { signal: controller.signal });
+        const coursesRes = await sessionCachedFetch(`${apiBase}/api/courses`, { signal: controller.signal });
         if (coursesRes.ok) {
           const coursesData: any = await coursesRes.json();
           console.log("Fetched Data (Courses):", coursesData);
@@ -1488,7 +1490,7 @@ export default function App() {
 
       try {
         console.log("⚡ Fetching all dynamic datasets from Cloudflare D1...");
-        const response = await fetch(`${apiBase}/api/dynamic-data`, { signal: controller.signal });
+        const response = await sessionCachedFetch(`${apiBase}/api/dynamic-data`, { signal: controller.signal });
         if (response.ok) {
           const result: any = await response.json();
           if (result.success && result.data) {
@@ -2423,7 +2425,7 @@ export default function App() {
   useEffect(() => {
     if (activeChapterId != null) {
       const chNum = Number(activeChapterId) || 1;
-      fetch(`/api/chapter-details?chapterNumber=${chNum}`)
+      sessionCachedFetch(`/api/chapter-details?chapterNumber=${chNum}`)
         .then(res => res.json())
         .then((data: any) => {
           if (data.success) {
@@ -2577,7 +2579,7 @@ export default function App() {
 
       setIsPurchasedCoursesLoading(true);
       try {
-        const res = await fetch(`/api/user-courses?userId=${encodeURIComponent(activeUserId)}`);
+        const res = await sessionCachedFetch(`/api/user-courses?userId=${encodeURIComponent(activeUserId)}`);
         if (res.ok) {
           const json: any = await res.json().catch(() => ({}));
           if (json.success && Array.isArray(json.data)) {
@@ -2913,7 +2915,7 @@ export default function App() {
     const controller = new AbortController();
     const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
-    fetch(`${apiBase}/api/resources`, { signal: controller.signal })
+    sessionCachedFetch(`${apiBase}/api/resources`, { signal: controller.signal })
       .then(async response => {
         const payload: any = await response.json().catch(() => ({}));
         if (!response.ok || !payload.success) {
@@ -3552,7 +3554,7 @@ startxref
 
   const saveCurriculumToD1 = async (table: string, payload: any): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/api-curriculum?table=${table}`, {
+      const res = await sessionCachedFetch(`/api/api-curriculum?table=${table}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -4692,9 +4694,16 @@ startxref
 
   useEffect(() => {
     const sorted = getSortedCourses();
-    if (sorted.length > 0) {
-      setSelectedCourseTab(sorted[0].id);
-    }
+    if (sorted.length === 0) return;
+
+    // Resource is a virtual navigation tab, not a row in `courses`. Preserve
+    // both that explicit selection and any still-valid course selection when
+    // background course/order hydration refreshes these dependencies.
+    setSelectedCourseTab(currentSelection => {
+      if (currentSelection === 'resources') return currentSelection;
+      if (sorted.some(course => course.id === currentSelection)) return currentSelection;
+      return sorted[0].id;
+    });
   }, [currentUser, orders, courses, purchasedCourses]);
 
   const isStoreItemUnlocked = (itemId: string, itemPrice: number) => {
@@ -4783,7 +4792,14 @@ startxref
   }
 
   return (
-    <div className="h-screen h-[100dvh] bg-brand-light text-brand-dark flex flex-col font-sans overflow-hidden">
+    <div
+      className="h-screen h-[100dvh] bg-brand-light text-brand-dark flex flex-col font-sans overflow-hidden"
+      aria-busy={!hasLoadedD1Data}
+    >
+      <LoadingOverlay
+        isVisible={!hasLoadedD1Data}
+        message="Loading curriculum & learning resources…"
+      />
       
       {/* Responsive app header: compact identity/actions on mobile, full navigation on desktop. */}
       <header className="bg-white/90 backdrop-blur-xl border-b border-gray-200/60 shrink-0 sticky top-0 z-40 transition-all">
@@ -4874,6 +4890,8 @@ startxref
                     onClick: () => {
                       setSelectedCourseTab('course-basic');
                       setDashboardTab('lessons');
+                      setActiveLessonId(null);
+                      setCurrentPage(1);
                     }
                   },
                   {
@@ -4884,6 +4902,8 @@ startxref
                     onClick: () => {
                       setSelectedCourseTab('course-business');
                       setDashboardTab('lessons');
+                      setActiveLessonId(null);
+                      setCurrentPage(1);
                     }
                   },
                   {
@@ -4894,6 +4914,8 @@ startxref
                     onClick: () => {
                       setSelectedCourseTab('resources');
                       setDashboardTab('lessons');
+                      setActiveLessonId(null);
+                      setCurrentPage(1);
                     }
                   },
                   {
@@ -10730,14 +10752,14 @@ startxref
                                 };
 
                                 try {
-                                  let res = await fetch('/api/lessons', {
+                                  let res = await sessionCachedFetch('/api/lessons', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
                                     body: JSON.stringify(lessonPayload)
                                   });
 
                                   if (!res.ok) {
-                                    res = await fetch('/api/insert-lesson', {
+                                    res = await sessionCachedFetch('/api/insert-lesson', {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
                                       body: JSON.stringify(lessonPayload)
@@ -10915,7 +10937,7 @@ startxref
                                       onClick={async () => {
                                         if (window.confirm(`Permanently delete lesson #${les.id} (${les.titleThai}) from Cloudflare D1?`)) {
                                           try {
-                                            const res = await fetch(`/api/lessons?id=${encodeURIComponent(les.id)}`, { method: 'DELETE' });
+                                            const res = await sessionCachedFetch(`/api/lessons?id=${encodeURIComponent(les.id)}`, { method: 'DELETE' });
                                             if (res.ok) {
                                               setLessons(prev => prev.filter(l => String(l.id) !== String(les.id)));
                                               addSystemLog('admin', `Deleted lesson #${les.id} from Cloudflare D1.`);

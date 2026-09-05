@@ -1,4 +1,5 @@
 import { getDB, jsonResponse, handleOptions } from './dbHelper';
+import { recordUserActivity } from './profileService';
 
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   const req = context.request;
@@ -48,6 +49,18 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           progress_data = excluded.progress_data,
           updated_at = CURRENT_TIMESTAMP
       `).bind(userId, JSON.stringify(pData)).run();
+
+      const completedLessons = Array.isArray(pData.completedLessons) ? pData.completedLessons.length : undefined;
+      await recordUserActivity(db, {
+        userId: String(userId),
+        activityType: 'learning_progress_synced',
+        courseId: typeof body.courseId === 'string' ? body.courseId : null,
+        lessonId: typeof body.lessonId === 'string' ? body.lessonId : null,
+        metadata: {
+          ...(typeof pData.totalXp === 'number' ? { totalXp: pData.totalXp } : {}),
+          ...(completedLessons !== undefined ? { completedLessons } : {}),
+        },
+      });
 
       return jsonResponse({ success: true, message: 'Progress saved successfully' });
     }

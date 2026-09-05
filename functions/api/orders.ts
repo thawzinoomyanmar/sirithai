@@ -1,47 +1,5 @@
 import { getDB, jsonResponse, handleOptions } from './dbHelper';
-
-async function ensureTransactionsTable(db: any) {
-  try {
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT,
-        item_name TEXT,
-        item_type TEXT,
-        amount REAL NOT NULL DEFAULT 0.0,
-        currency TEXT DEFAULT 'MMK',
-        payment_method TEXT,
-        status TEXT DEFAULT 'pending',
-        transaction_proof_url TEXT,
-        admin_notes TEXT,
-        student_phone TEXT,
-        student_email TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `).run();
-
-    const columnsToAdd = [
-      'course_id TEXT',
-      'slip_image TEXT',
-      'item_name TEXT',
-      'item_type TEXT',
-      'currency TEXT DEFAULT \'MMK\'',
-      'admin_notes TEXT',
-      'student_phone TEXT',
-      'student_email TEXT'
-    ];
-
-    for (const col of columnsToAdd) {
-      try {
-        await db.prepare(`ALTER TABLE transactions ADD COLUMN ${col}`).run();
-      } catch {
-        // ignore if column exists
-      }
-    }
-  } catch (schemaErr: any) {
-    console.warn('[Orders Schema Note]', schemaErr?.message || schemaErr);
-  }
-}
+import { createPaymentStatusLogStatement, normalizePaymentStatus } from './paymentService';
 
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   const req = context.request;
@@ -57,8 +15,6 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
   }
 
   try {
-    await ensureTransactionsTable(db);
-
     if (method === 'GET') {
       const url = new URL(req.url);
       const id = url.searchParams.get('id');
@@ -135,7 +91,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       const amount = parseFloat(body.priceAmount ?? body.amount ?? 0);
       const currency = body.currency || 'MMK';
       const payment_method = body.payment_method || body.paymentMethod || 'KBZPay';
-      const status = body.status || 'pending';
+      const status = normalizePaymentStatus(body.status);
+      if (!status) return jsonResponse({ success: false, error: 'Invalid payment status' }, 400);
       const proof_url = body.evidenceImage || body.transaction_proof_url || body.transactionProofUrl || null;
       const admin_notes = body.adminNotes || body.admin_notes || null;
       const student_phone = body.studentPhone || body.student_phone || null;
@@ -157,10 +114,13 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         }
       }
 
+      const previous = await db.prepare(
+        'SELECT status, user_id FROM transactions WHERE id = ?'
+      ).bind(id).first<{ status: string | null; user_id: string | null }>();
       const sql = `
         INSERT INTO transactions (
-          id, user_id, course_id, item_name, item_type, amount, currency, payment_method, status, transaction_proof_url, admin_notes, student_phone, student_email
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, user_id, course_id, item_name, item_type, amount, currency, payment_method, status, transaction_proof_url, admin_notes, student_phone, student_email, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(id) DO UPDATE SET
           user_id = excluded.user_id,
           course_id = excluded.course_id,
@@ -173,12 +133,28 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           transaction_proof_url = excluded.transaction_proof_url,
           admin_notes = excluded.admin_notes,
           student_phone = excluded.student_phone,
-          student_email = excluded.student_email;
+          student_email = excluded.student_email,
+          updated_at = CURRENT_TIMESTAMP;
       `;
 
-      await db.prepare(sql).bind(
-        id, user_id, course_id, item_name, item_type, amount, currency, payment_method, status, proof_url, admin_notes, student_phone, student_email
-      ).run();
+      const writeResults = await db.batch([
+        db.prepare(sql).bind(
+          id, user_id, course_id, item_name, item_type, amount, currency, payment_method,
+          status, proof_url, admin_notes, student_phone, student_email,
+        ),
+        createPaymentStatusLogStatement(db, {
+          transactionId: id,
+          userId: String(user_id),
+          previousStatus: previous?.status,
+          newStatus: status,
+          changedBy: req.headers.get('X-Admin-Id') || String(user_id),
+          reason: previous ? 'Order updated' : 'Order created',
+          metadata: { courseId: course_id, amount, currency, paymentMethod: payment_method },
+        }),
+      ]);
+      if (!writeResults.every((result) => result.success)) {
+        return jsonResponse({ success: false, error: 'Order could not be recorded' }, 500);
+      }
 
       return jsonResponse({
         success: true,
@@ -207,6 +183,11 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         return jsonResponse({ success: false, error: 'Order ID is required for update' }, 400);
       }
 
+      const existing = await db.prepare(
+        'SELECT id, user_id, status FROM transactions WHERE id = ?'
+      ).bind(id).first<{ id: string; user_id: string | null; status: string | null }>();
+      if (!existing) return jsonResponse({ success: false, error: 'Transaction not found' }, 404);
+
       const updates: string[] = [];
       const values: any[] = [];
 
@@ -231,8 +212,10 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         values.push(body.currency);
       }
       if (body.status !== undefined) {
+        const status = normalizePaymentStatus(body.status);
+        if (!status) return jsonResponse({ success: false, error: 'Invalid payment status' }, 400);
         updates.push('status = ?');
-        values.push(body.status);
+        values.push(status);
       }
       if (body.evidenceImage !== undefined || body.transaction_proof_url !== undefined || body.transactionProofUrl !== undefined) {
         updates.push('transaction_proof_url = ?');
@@ -255,9 +238,27 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         return jsonResponse({ success: false, error: 'No fields provided to update' }, 400);
       }
 
+      updates.push('updated_at = CURRENT_TIMESTAMP');
       values.push(id);
       const sql = `UPDATE transactions SET ${updates.join(', ')} WHERE id = ?;`;
-      await db.prepare(sql).bind(...values).run();
+      const update = db.prepare(sql).bind(...values);
+      const nextStatus = body.status !== undefined ? normalizePaymentStatus(body.status) : null;
+      const nextUserId = body.username || body.user_id || body.userId || existing.user_id;
+      const statements: D1PreparedStatement[] = [update];
+      if (nextStatus && nextStatus !== normalizePaymentStatus(existing.status)) {
+        statements.push(createPaymentStatusLogStatement(db, {
+          transactionId: id,
+          userId: nextUserId,
+          previousStatus: existing.status,
+          newStatus: nextStatus,
+          changedBy: req.headers.get('X-Admin-Id') || 'admin',
+          reason: body.adminNotes || body.admin_notes || 'Order status updated',
+        }));
+      }
+      const updateResults = await db.batch(statements);
+      if (!updateResults[0]?.success || Number(updateResults[0]?.meta?.changes || 0) < 1) {
+        return jsonResponse({ success: false, error: `Order ${id} was not updated` }, 409);
+      }
 
       return jsonResponse({
         success: true,
@@ -274,7 +275,25 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
         return jsonResponse({ success: false, error: 'Order ID is required for deletion' }, 400);
       }
 
-      await db.prepare('DELETE FROM transactions WHERE id = ?').bind(id).run();
+      const existing = await db.prepare(
+        'SELECT user_id, status FROM transactions WHERE id = ?'
+      ).bind(id).first<{ user_id: string | null; status: string | null }>();
+      if (!existing) return jsonResponse({ success: false, error: 'Transaction not found' }, 404);
+
+      const deleteResults = await db.batch([
+        createPaymentStatusLogStatement(db, {
+          transactionId: id,
+          userId: existing.user_id,
+          previousStatus: existing.status,
+          newStatus: 'deleted',
+          changedBy: req.headers.get('X-Admin-Id') || 'admin',
+          reason: 'Order permanently deleted',
+        }),
+        db.prepare('DELETE FROM transactions WHERE id = ?').bind(id),
+      ]);
+      if (!deleteResults.every((result) => result.success)) {
+        return jsonResponse({ success: false, error: `Order ${id} could not be deleted` }, 500);
+      }
 
       return jsonResponse({
         success: true,

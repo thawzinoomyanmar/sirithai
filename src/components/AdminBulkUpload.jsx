@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertCircle, CheckCircle2, FileJson, Loader2, UploadCloud } from 'lucide-react';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_RECORDS = 500;
@@ -383,7 +384,7 @@ export function AdminBulkUpload() {
     setSaving(true);
     setStatus(null);
     try {
-      const response = await fetch('/api/admin/bulk-upload', {
+      const response = await sessionCachedFetch('/api/admin/bulk-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Static-Admin': 'true' },
         body: JSON.stringify({ data: bulkDocument, mode: bulkMode }),

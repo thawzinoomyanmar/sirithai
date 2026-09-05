@@ -1,5 +1,6 @@
 import { Webhook } from 'svix';
 import { getDB, handleOptions } from '../dbHelper';
+import { recordUserActivity } from '../profileService';
 
 export interface Env {
   DB: D1Database;
@@ -56,12 +57,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     try {
       await db.prepare(
-        `INSERT INTO users_profile (id, full_name, email, role, created_at)
-         VALUES (?, ?, ?, 'student', ?)
+        `INSERT INTO users_profile (id, full_name, email, role, created_at, last_active_at, updated_at)
+         VALUES (?, ?, ?, 'student', ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            full_name = excluded.full_name,
-           email = excluded.email;`
-      ).bind(id, fullName, email, createdAt).run();
+           email = excluded.email,
+           updated_at = excluded.updated_at;`
+      ).bind(id, fullName, email, createdAt, createdAt, new Date().toISOString()).run();
+
+      await recordUserActivity(db, {
+        userId: id,
+        activityType: eventType === 'user.created' ? 'account_created' : 'account_updated',
+        metadata: { source: 'clerk_webhook' },
+        occurredAt: createdAt,
+      });
 
       console.log(`[Clerk Webhook] Successfully processed ${eventType} for user ${id}`);
     } catch (e: any) {

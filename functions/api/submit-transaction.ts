@@ -1,4 +1,6 @@
 import { getDB, jsonResponse, handleOptions } from './dbHelper';
+import { createPaymentStatusLogStatement } from './paymentService';
+import { recordUserActivity } from './profileService';
 
 export async function onRequestOptions() {
   return handleOptions();
@@ -13,8 +15,6 @@ export async function onRequestPost(context: any) {
         error: 'D1 Database binding (env.DB) missing.'
       }, 503);
     }
-
-    await ensureTransactionsTable(db);
 
     let body: any = {};
     try {
@@ -36,17 +36,49 @@ export async function onRequestPost(context: any) {
     const itemType = body.itemType || body.item_type || 'course';
     const amount = parseFloat(body.amount ?? body.priceAmount ?? 25000);
     const currency = body.currency || 'MMK';
-    const paymentMethod = body.paymentMethod || body.payment_method || 'KBZPay';
-    const status = body.status || 'pending';
+    const paymentMethod = String(body.paymentMethod || body.payment_method || 'KBZPay').trim().slice(0, 40);
+    // Client payment submissions always start pending. Approval is an admin-only action.
+    const status = 'pending';
     const studentPhone = body.studentPhone || body.student_phone || null;
     const studentEmail = body.studentEmail || body.student_email || null;
     const adminNotes = body.adminNotes || body.admin_notes || null;
 
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return jsonResponse({ success: false, error: 'Payment amount must be greater than zero' }, 400);
+    }
+    if (paymentMethod.toLowerCase() === 'kbzpay' && !slipImage) {
+      return jsonResponse({ success: false, error: 'KBZPay payment slip image is required' }, 400);
+    }
+    if (typeof slipImage === 'string' && slipImage.length > 1_000_000) {
+      return jsonResponse({ success: false, error: 'Payment slip image is too large' }, 413);
+    }
+
+    const duplicate = await db.prepare(`
+      SELECT id, status FROM transactions
+      WHERE LOWER(user_id) = LOWER(?) AND LOWER(course_id) = LOWER(?)
+        AND LOWER(status) IN ('pending', 'approved', 'completed')
+      LIMIT 1
+    `).bind(String(userId), String(courseId)).first<{ id: string; status: string }>();
+    if (duplicate && duplicate.id !== id) {
+      return jsonResponse({
+        success: false,
+        duplicate: true,
+        code: 'DUPLICATE_PURCHASE_REJECTED',
+        error: 'သင်သည် ဤ သင်တန်းအတွက် ငွေပေးချေမှု တင်ထားပြီးဖြစ်ပါသည်',
+        transactionId: duplicate.id,
+        status: duplicate.status,
+      }, 409);
+    }
+
     // 1. Insert into transactions table
+    const previousTransaction = await db.prepare(
+      'SELECT status, user_id FROM transactions WHERE id = ?'
+    ).bind(id).first<{ status: string | null; user_id: string | null }>();
+
     const sqlTx = `
       INSERT INTO transactions (
-        id, user_id, course_id, item_name, item_type, amount, currency, payment_method, slip_image, transaction_proof_url, status, admin_notes, student_phone, student_email
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, user_id, course_id, item_name, item_type, amount, currency, payment_method, slip_image, transaction_proof_url, status, admin_notes, student_phone, student_email, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
         course_id = excluded.course_id,
@@ -60,25 +92,51 @@ export async function onRequestPost(context: any) {
         status = excluded.status,
         admin_notes = excluded.admin_notes,
         student_phone = excluded.student_phone,
-        student_email = excluded.student_email;
+        student_email = excluded.student_email,
+        updated_at = CURRENT_TIMESTAMP;
     `;
 
-    await db.prepare(sqlTx).bind(
-      id, userId, courseId, itemName, itemType, amount, currency, paymentMethod, slipImage, slipImage, status, adminNotes, studentPhone, studentEmail
-    ).run();
+    const paymentResults = await db.batch([
+      db.prepare(sqlTx).bind(
+        id, userId, courseId, itemName, itemType, amount, currency, paymentMethod,
+        slipImage, slipImage, status, adminNotes, studentPhone, studentEmail,
+      ),
+      createPaymentStatusLogStatement(db, {
+        transactionId: id,
+        userId: String(userId),
+        previousStatus: previousTransaction?.status,
+        newStatus: status,
+        changedBy: String(userId),
+        reason: previousTransaction ? 'Payment submission updated' : 'Payment submitted',
+        metadata: { courseId, amount, currency, paymentMethod },
+      }),
+    ]);
+    if (!paymentResults.every((result) => result.success)) {
+      return jsonResponse({ success: false, error: 'Transaction could not be recorded' }, 500);
+    }
 
     // 2. Also insert or update user_courses tracking table
     const userCourseId = `UC-${userId}-${courseId}`;
     const sqlUC = `
-      INSERT INTO user_courses (id, user_id, course_id, status)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET status = excluded.status;
+      INSERT INTO user_courses (id, user_id, course_id, status, source_transaction_id, enrolled_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        status = excluded.status,
+        source_transaction_id = excluded.source_transaction_id,
+        updated_at = CURRENT_TIMESTAMP;
     `;
     try {
-      await db.prepare(sqlUC).bind(userCourseId, userId, courseId, status).run();
+      await db.prepare(sqlUC).bind(userCourseId, userId, courseId, status, id).run();
     } catch (ucErr) {
       console.warn('[submit-transaction] user_courses insert note:', ucErr);
     }
+
+    await recordUserActivity(db, {
+      userId: String(userId),
+      activityType: 'enrollment_submitted',
+      courseId: String(courseId),
+      metadata: { transactionId: id, status, amount, currency },
+    });
 
     return jsonResponse({
       success: true,
@@ -103,59 +161,5 @@ export async function onRequestPost(context: any) {
       success: false,
       error: e.message || 'Failed to submit transaction'
     }, 500);
-  }
-}
-
-async function ensureTransactionsTable(db: any) {
-  try {
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT,
-        course_id TEXT,
-        item_name TEXT,
-        item_type TEXT,
-        amount REAL DEFAULT 0.0,
-        currency TEXT DEFAULT 'MMK',
-        payment_method TEXT,
-        slip_image TEXT,
-        transaction_proof_url TEXT,
-        status TEXT DEFAULT 'pending',
-        admin_notes TEXT,
-        student_phone TEXT,
-        student_email TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `).run();
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS user_courses (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        course_id TEXT NOT NULL,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `).run();
-
-    const columns = [
-      'course_id TEXT',
-      'slip_image TEXT',
-      'item_name TEXT',
-      'item_type TEXT',
-      'currency TEXT DEFAULT \'MMK\'',
-      'admin_notes TEXT',
-      'student_phone TEXT',
-      'student_email TEXT'
-    ];
-    for (const col of columns) {
-      try {
-        await db.prepare(`ALTER TABLE transactions ADD COLUMN ${col}`).run();
-      } catch {
-        // column exists
-      }
-    }
-  } catch (err: any) {
-    console.warn('[ensureTransactionsTable Note]', err?.message);
   }
 }

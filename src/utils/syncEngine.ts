@@ -1,4 +1,5 @@
 import { localDB } from './db';
+import { sessionCachedFetch } from './apiCache';
 
 export interface SyncLog {
   timestamp: string;
@@ -176,7 +177,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
       addSyncLog('sync', 'Querying Cloudflare D1 for words_phrases...', 'info');
 
       try {
-        const response = await fetch('/api/vocabulary');
+        const response = await sessionCachedFetch('/api/vocabulary', force ? { cache: 'reload' } : {});
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -224,7 +225,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
       const localCoursesCount = await localDB.courses.count();
       if (localCoursesCount === 0 || force) {
         addSyncLog('sync', 'Querying Cloudflare D1 for courses...', 'info');
-        const coursesRes = await fetch('/api/courses');
+        const coursesRes = await sessionCachedFetch('/api/courses', force ? { cache: 'reload' } : {});
         if (coursesRes.ok) {
           const coursesResData: any = await coursesRes.json();
           const courses = coursesResData.data || coursesResData;
@@ -246,7 +247,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
       const localLessonsCount = await localDB.lessons.count();
       if (localLessonsCount === 0 || force) {
         addSyncLog('sync', 'Querying Cloudflare D1 for lessons...', 'info');
-        const lessonsRes = await fetch('/api/lessons');
+        const lessonsRes = await sessionCachedFetch('/api/lessons', force ? { cache: 'reload' } : {});
         if (lessonsRes.ok) {
           const lessonsResData: any = await lessonsRes.json();
           const lessons = lessonsResData.data || lessonsResData;
@@ -271,7 +272,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
       const localGrammarCount = await localDB.grammar_chapters.count();
       if (localGrammarCount === 0 || force) {
         addSyncLog('sync', 'Querying Cloudflare D1 for grammar chapters...', 'info');
-        const grammarRes = await fetch('/api/grammar-chapters');
+        const grammarRes = await sessionCachedFetch('/api/grammar-chapters', force ? { cache: 'reload' } : {});
         if (grammarRes.ok) {
           const grammarResData: any = await grammarRes.json();
           const chapters = grammarResData.data || grammarResData;
@@ -291,7 +292,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
       // Pull grammar_ext relational records
       try {
         addSyncLog('sync', 'Querying Cloudflare D1 for grammar_ext relational records...', 'info');
-        const grammarExtRes = await fetch('/api/grammar');
+        const grammarExtRes = await sessionCachedFetch('/api/grammar', force ? { cache: 'reload' } : {});
         if (grammarExtRes.ok) {
           const grammarExtData: any = await grammarExtRes.json();
           if (grammarExtData.success && Array.isArray(grammarExtData.data)) {
@@ -353,7 +354,7 @@ export async function syncCloudflareD1ToUserOfflineStorage(force: boolean = fals
       const localAlphabetCount = await localDB.alphabet.count();
       if (localAlphabetCount === 0 || force) {
         addSyncLog('sync', 'Querying Cloudflare D1 for alphabet...', 'info');
-        const alphabetRes = await fetch('/api/alphabet');
+        const alphabetRes = await sessionCachedFetch('/api/alphabet', force ? { cache: 'reload' } : {});
         if (alphabetRes.ok) {
           const alphabetResData: any = await alphabetRes.json();
           const alphabets = alphabetResData.data || alphabetResData;

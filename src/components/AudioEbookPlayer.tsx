@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, List, BookOpen, Download, X, Music, Sparkles } from 'lucide-react';
 import { createWebAudioPlayer, type WebAudioPlayer } from '../utils/webAudioPlayer';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 export interface AudioTrack {
   id: number;
@@ -56,7 +57,7 @@ export const AudioEbookPlayer: React.FC<AudioEbookPlayerProps> = ({
 
     const fetchAudioEbookFromD1 = async () => {
       try {
-        const response = await fetch(`/api/audio-ebooks?ebook_id=${encodeURIComponent(ebookId)}`);
+        const response = await sessionCachedFetch(`/api/audio-ebooks?ebook_id=${encodeURIComponent(ebookId)}`);
         if (response.ok) {
           const resData: any = await response.json();
           if (resData.success && resData.data && isMounted) {

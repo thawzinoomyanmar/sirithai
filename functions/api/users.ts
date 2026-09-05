@@ -47,15 +47,17 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
       }
 
       await db.prepare(`
-        INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users_profile (id, full_name, email, avatar_url, role, phone, xp, last_active_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(id) DO UPDATE SET
           full_name = excluded.full_name,
           email = excluded.email,
           avatar_url = excluded.avatar_url,
           phone = COALESCE(excluded.phone, users_profile.phone),
           xp = COALESCE(excluded.xp, users_profile.xp),
-          role = COALESCE(excluded.role, users_profile.role)
+          role = COALESCE(excluded.role, users_profile.role),
+          last_active_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
       `).bind(userId, name, mail, avatar, userRole, userPhone, userXp).run();
 
       return jsonResponse({ success: true, message: 'User profile synced successfully', id: userId, role: userRole });
@@ -75,7 +77,8 @@ export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
           full_name = COALESCE(?, full_name),
           avatar_url = COALESCE(?, avatar_url),
           phone = COALESCE(?, phone),
-          xp = COALESCE(?, xp)
+          xp = COALESCE(?, xp),
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).bind(
         role || null,

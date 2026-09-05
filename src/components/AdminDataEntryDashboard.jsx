@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BookOpen, Languages, LibraryBig, Loader2, PlusCircle, UploadCloud } from 'lucide-react';
 import { AdminBulkUpload } from './AdminBulkUpload';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 const initialLessonForm = {
   id: '',
@@ -87,7 +88,7 @@ export function AdminDataEntryDashboard() {
     setStatus(null);
 
     try {
-      const response = await fetch(`/api/admin/content/${entity}`, {
+      const response = await sessionCachedFetch(`/api/admin/content/${entity}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

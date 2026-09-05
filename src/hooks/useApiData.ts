@@ -1,15 +1,16 @@
 import useSWR from 'swr';
 import { Lesson, Course, GrammarChapter, VocabCategory, VocabItem } from '../types';
+import { sessionCachedFetch } from '../utils/apiCache';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any>);
+const fetcher = (url: string) => sessionCachedFetch(url).then(res => res.json() as Promise<any>);
 
 const lessonsFetcher = async (endpoint: string): Promise<{ success: boolean; data: Lesson[] }> => {
   const fullUrl = `${API_BASE}${endpoint}`;
   console.log("Fetching user lessons...", fullUrl);
   try {
-    const res = await fetch(fullUrl);
+    const res = await sessionCachedFetch(fullUrl);
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       throw new Error(`HTTP ${res.status}: ${res.statusText || errText}`);
@@ -58,10 +59,10 @@ export async function fetchLessonDetail(lessonId: string | number): Promise<Less
   const cleanId = String(lessonId);
   const fullUrl = `${API_BASE}/api/lessons/${encodeURIComponent(cleanId)}`;
   try {
-    const res = await fetch(fullUrl);
+    const res = await sessionCachedFetch(fullUrl);
     if (!res.ok) {
       const fallbackUrl = `${API_BASE}/api/lessons?id=${encodeURIComponent(cleanId)}`;
-      const res2 = await fetch(fallbackUrl);
+      const res2 = await sessionCachedFetch(fallbackUrl);
       if (!res2.ok) return null;
       const data2: any = await res2.json();
       return data2.data || data2.lesson || null;

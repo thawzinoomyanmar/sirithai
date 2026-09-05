@@ -11,7 +11,7 @@ export function jsonResponse(data: unknown, status = 200, extraHeaders: Record<s
     status,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin, X-Admin-Id',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       ...extraHeaders,
@@ -24,7 +24,7 @@ export function handleOptions() {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Static-Admin, X-Admin-Id',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     },
   });
